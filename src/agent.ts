@@ -40,7 +40,9 @@ export class AgentError extends Error {
 
 const PROFILE_SIZE = 8;
 const MAX_LEVEL_CANDIDATES = 40;
-const ENGLISH = new Set(["en", "eng", "english"]);
+const LEVEL_BATCH = 20;
+// "en", "en-US", "eng", "English (US)" etc.
+const ENGLISH = /^(en|eng|english)\b/i;
 
 const STEP_LABELS: Record<string, string> = {
   normalize: "Understanding your favourites",
@@ -81,7 +83,7 @@ function describe(e: QlooEntity): string {
 }
 
 function isEnglishOrUnknown(e: QlooEntity): boolean {
-  return !e.language || ENGLISH.has(e.language.trim().toLowerCase());
+  return !e.language || ENGLISH.test(e.language.trim());
 }
 
 function fallbackActivity(p: Pick, minutes: number): string {
@@ -127,6 +129,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
         title: f.title,
         query: isString(row.query) ? row.query.trim() : f.title,
         type: f.type ?? toEntityType(row.typeGuess),
+        typeGiven: !!f.type,
       };
     });
     return {
@@ -141,10 +144,22 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
     const lines: string[] = [];
     for (const n of normalized) {
       const names = new Set([normalizeTitle(n.query), normalizeTitle(n.title)]);
-      const choose = (results: QlooEntity[]) => results.find((r) => names.has(normalizeTitle(r.name))) ?? results[0];
-      let hit = n.type ? choose(await deps.qloo.search(n.query, [n.type], 5)) : undefined;
-      if (!hit) hit = choose(await deps.qloo.search(n.query, undefined, 5));
-      if (!hit && n.query !== n.title) hit = choose(await deps.qloo.search(n.title, undefined, 5));
+      const exact = (results: QlooEntity[]) => results.find((r) => names.has(normalizeTitle(r.name)));
+      // Search is fuzzy and the type may be a model guess, so unless the user chose the type, take an
+      // exact name match from any pass before falling back to the top untyped hit.
+      const typed = n.type ? await deps.qloo.search(n.query, [n.type], 5) : [];
+      let hit = exact(typed) ?? (n.typeGiven ? typed[0] : undefined);
+      let untyped: QlooEntity[] = [];
+      if (!hit) {
+        untyped = await deps.qloo.search(n.query, undefined, 5);
+        hit = exact(untyped);
+      }
+      let byTitle: QlooEntity[] = [];
+      if (!hit && n.query !== n.title) {
+        byTitle = await deps.qloo.search(n.title, undefined, 5);
+        hit = exact(byTitle);
+      }
+      hit ??= untyped[0] ?? typed[0] ?? byTitle[0];
       if (!hit) {
         warnings.push(`Couldn't find "${n.title}"`);
         lines.push(`"${n.title}" → not found`);
@@ -183,7 +198,8 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       maxYear = year(out.maxYear);
       const resolved: QlooTag[] = [];
       for (const q of add) {
-        const [hit] = await deps.qloo.searchTags(q, 3);
+        // Semantic tag search can return place or brand tags; only media tags make sense as signals.
+        const hit = (await deps.qloo.searchTags(q, 5)).find((t) => `${t.id} ${t.subtype ?? ""}`.includes(":media"));
         if (hit && !resolved.some((t) => t.id === hit.id)) resolved.push(hit);
       }
       tagIds = resolved.map((t) => t.id);
@@ -273,12 +289,23 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
         }
       }
     };
-    collect(await deps.llm.json<unknown>(levelPrompt(input.level, payload)));
+    // Small batches keep each answer well inside the token limit; a failed batch keeps what others rated.
+    let lastError: unknown;
+    const rate = async (batch: LevelCandidate[]) => {
+      for (let i = 0; i < batch.length; i += LEVEL_BATCH) {
+        try {
+          collect(await deps.llm.json<unknown>(levelPrompt(input.level, batch.slice(i, i + LEVEL_BATCH))));
+        } catch (err) {
+          lastError = err;
+          console.error("level batch failed:", err instanceof Error ? err.message : String(err));
+        }
+      }
+    };
+    await rate(payload);
     // Models sometimes stop after a few items; ask once more for the ones they skipped.
     const missing = payload.filter((c) => !rated.has(c.id));
-    if (missing.length > 0) {
-      collect(await deps.llm.json<unknown>(levelPrompt(input.level, missing)));
-    }
+    if (missing.length > 0) await rate(missing);
+    if (rated.size === 0 && lastError) throw lastError;
     const levels = [...rated.values()];
     const value = selectPicks(capped, levels, input.level, input.formats);
     if (value.length === 0) {
@@ -294,7 +321,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
 
   // 6. explain
   await step("explain", async () => {
-    for (const p of picks) p.because = explainPick(p, seeds);
+    for (const p of picks) p.because = explainPick(p, seeds, profile);
     return { value: undefined, detail: picks.map((p) => `${p.name}: ${p.because}`).join("; ") };
   });
 

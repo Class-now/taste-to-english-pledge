@@ -39,4 +39,14 @@ describe("explainPick", () => {
     expect(explainPick(pick, [seedA])).toBe("Strong taste match (87%)");
     expect(explainPick({ ...pick, affinity: undefined }, [seedA])).toBe("Recommended by Qloo for your taste");
   });
+  it("reads seed ids used as explainability keys and picks the top score", () => {
+    const pick: QlooEntity = { id: "p", name: "P", type: "book", tags: [], explainability: { "seed-a": 0.2, "seed-b": 0.7 } };
+    expect(explainPick(pick, [seedA, seedB])).toBe("Because you like Persona 5");
+  });
+
+  it("falls back to tags shared with the taste profile when seeds have no tags", () => {
+    const pick: QlooEntity = { id: "p", name: "P", type: "book", tags: [tag("mystery", "Mystery")], affinity: 0.5 };
+    const bare = [{ ...seedA, tags: [] }];
+    expect(explainPick(pick, bare, [tag("mystery", "Mystery")])).toBe("Matches your taste for mystery");
+  });
 });

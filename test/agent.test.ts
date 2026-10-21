@@ -85,7 +85,8 @@ describe("runPlan", () => {
     expect(r.trace[3].detail).toContain("romance");
     for (const c of qloo.insightCalls) expect(c.tagIds).toEqual(["urn:tag:keyword:media:mystery"]);
     for (const p of r.picks) expect(p.tags.some((t) => t.name.toLowerCase().includes("romance"))).toBe(false);
-    expect(llm.calls.map((c) => c.kind)).toEqual(["normalize", "refine", "level", "plan"]);
+    // Level runs in batches of 20 candidates.
+    expect([...new Set(llm.calls.map((c) => c.kind))]).toEqual(["normalize", "refine", "level", "plan"]);
   });
 
   it("passes refine year filters to insights", async () => {
@@ -118,6 +119,52 @@ describe("runPlan", () => {
     const llm = new FakeLlm({ normalize: () => ({ items: [{ query: "Persona 5", typeGuess: "book" }] }) });
     const r = await runPlan({ ...base, favorites: [{ title: "Persona 5" }] }, { qloo: new MockQlooClient(), llm, mode: "mock" });
     expect(r.trace[1].detail).toContain("Persona 5 (videogame");
+  });
+
+  it("prefers an exact name match over the top hit for a guessed type", async () => {
+    const qloo = new (class extends MockQlooClient {
+      override async search(q: string, types?: Parameters<MockQlooClient["search"]>[1], take?: number) {
+        if (types?.length) return [{ id: "wrong", name: "Some Other Show", type: types[0], tags: [] }];
+        return super.search(q, types, take);
+      }
+    })();
+    const llm = new FakeLlm({ normalize: () => ({ items: [{ index: 0, query: "Spirited Away", typeGuess: "tv_show" }] }) });
+    const r = await runPlan({ ...base, favorites: [{ title: "千と千尋の神隠し" }] }, { qloo, llm, mode: "mock" });
+    expect(r.trace[1].detail).toContain("Spirited Away (movie");
+  });
+
+  it("keeps English books whose language has a region suffix", async () => {
+    const qloo = new (class extends MockQlooClient {
+      override async insights(p: InsightsParams) {
+        return (await super.insights(p)).map((e) => (e.language === "en" ? { ...e, language: "en-US" } : e));
+      }
+    })();
+    const r = await runPlan({ ...base, formats: ["read"] }, { qloo, llm: new FakeLlm(), mode: "mock" });
+    expect(r.picks.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the ratings from level batches that succeeded", async () => {
+    let n = 0;
+    const llm = new FakeLlm({
+      level: (opts) => {
+        if (n++ === 0) throw new Error("cut off");
+        const items = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { id: string }[];
+        return { items: items.map((c) => ({ id: c.id, cefr: "B1", reason: "fake" })) };
+      },
+    });
+    const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });
+    expect(r.picks.length).toBeGreaterThan(0);
+  });
+
+  it("ignores refine tags that are not media tags", async () => {
+    const qloo = new (class extends SpyQloo {
+      override async searchTags() {
+        return [{ id: "urn:tag:category:place:mystery_spot", name: "Mystery Spot", subtype: "urn:tag:category:place" }];
+      }
+    })();
+    const llm = new FakeLlm({ refine: () => ({ addTags: ["mystery"], avoidTags: [] }) });
+    await runPlan({ ...base, refine: "more mystery" }, { qloo, llm, mode: "mock" });
+    for (const c of qloo.insightCalls) expect(c.tagIds).toEqual([]);
   });
 
   it("respects a user-given type over the LLM guess", async () => {
@@ -173,27 +220,28 @@ describe("runPlan", () => {
   });
 
   it("re-asks the level step for candidates the model skipped", async () => {
-    let calls = 0;
+    const asked = new Map<string, number>();
     const llm = new FakeLlm({
       level: (opts) => {
-        calls++;
         const items = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { id: string; type: string }[];
-        // First answer rates only one candidate, the follow-up rates the rest.
+        for (const c of items) asked.set(c.id, (asked.get(c.id) ?? 0) + 1);
+        // The first answer per batch rates only one candidate; the follow-up rates the rest.
         const rows = items.map((c) => ({ id: c.id, cefr: "B1", reason: "fake" }));
-        return { items: calls === 1 ? rows.slice(0, 1) : rows };
+        return { items: items.every((c) => asked.get(c.id) === 1) ? rows.slice(0, 1) : rows };
       },
     });
     const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });
-    expect(calls).toBe(2);
+    expect([...asked.values()].some((n) => n === 2)).toBe(true);
     expect(r.picks.length).toBeGreaterThanOrEqual(6);
     expect(r.warnings).toEqual([]);
   });
 
   it("warns when fewer than six picks fit the level", async () => {
+    let rated = 0;
     const llm = new FakeLlm({
       level: (opts) => {
         const items = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { id: string }[];
-        return { items: items.map((c, i) => ({ id: c.id, cefr: i < 3 ? "B1" : "C2", reason: "fake" })) };
+        return { items: items.map((c) => ({ id: c.id, cefr: rated++ < 3 ? "B1" : "C2", reason: "fake" })) };
       },
     });
     const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });

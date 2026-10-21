@@ -183,6 +183,8 @@ export class HttpQlooClient implements QlooClient {
     });
     let res = await this.fetchFn(url, init());
     if (RETRYABLE.has(res.status)) {
+      // Release the first connection; Workers caps concurrent outbound connections at 6.
+      await res.body?.cancel();
       await new Promise((r) => setTimeout(r, this.retryDelayMs));
       res = await this.fetchFn(url, init());
     }

@@ -1,10 +1,27 @@
 import type { QlooEntity, QlooTag } from "./types";
 
-/** Every string found anywhere inside `value`, in document order. */
-function strings(value: unknown, out: string[] = []): string[] {
-  if (typeof value === "string") out.push(value);
-  else if (Array.isArray(value)) for (const v of value) strings(v, out);
-  else if (value && typeof value === "object") for (const v of Object.values(value)) strings(v, out);
+const SCORE_KEYS = ["score", "affinity", "weight", "value"];
+
+/**
+ * Seed ids mentioned anywhere in `value` (as a string value or as an object key), each with the
+ * score found beside it (0 when none). The key layout of Qloo explainability is unconfirmed.
+ */
+function contributors(value: unknown, seedIds: Set<string>, out = new Map<string, number>()): Map<string, number> {
+  const add = (id: string, score: number) => out.set(id, Math.max(out.get(id) ?? 0, score));
+  if (typeof value === "string") {
+    if (seedIds.has(value)) add(value, 0);
+  } else if (Array.isArray(value)) {
+    for (const v of value) contributors(v, seedIds, out);
+  } else if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const scoreKey = SCORE_KEYS.find((k) => typeof obj[k] === "number");
+    const score = scoreKey ? (obj[scoreKey] as number) : 0;
+    for (const [k, v] of Object.entries(obj)) {
+      if (seedIds.has(k)) add(k, typeof v === "number" ? v : 0);
+      if (typeof v === "string" && seedIds.has(v)) add(v, score);
+      else contributors(v, seedIds, out);
+    }
+  }
   return out;
 }
 
@@ -16,14 +33,16 @@ function joinNames(names: string[]): string {
 
 /**
  * The "because" line for a pick, derived only from Qloo data:
- * 1. a seed named in the pick's explainability, 2. the seed with the most shared tags, 3. the affinity score.
+ * 1. the top seed named in the pick's explainability, 2. the seed with the most shared tags,
+ * 3. tags shared with the taste profile, 4. the affinity score.
  */
-export function explainPick(pick: QlooEntity, seeds: QlooEntity[]): string {
+export function explainPick(pick: QlooEntity, seeds: QlooEntity[], profile: QlooTag[] = []): string {
   const seedById = new Map(seeds.map((s) => [s.id, s]));
-  for (const s of strings(pick.explainability)) {
-    const seed = seedById.get(s);
-    if (seed) return `Because you like ${seed.name}`;
+  let top: { id: string; score: number } | undefined;
+  for (const [id, score] of contributors(pick.explainability, new Set(seedById.keys()))) {
+    if (!top || score > top.score) top = { id, score };
   }
+  if (top) return `Because you like ${seedById.get(top.id)!.name}`;
 
   const pickTags = new Map<string, QlooTag>();
   for (const t of pick.tags) {
@@ -41,6 +60,10 @@ export function explainPick(pick: QlooEntity, seeds: QlooEntity[]): string {
     if (shared.length > 0 && (!best || shared.length > best.shared.length)) best = { seed, shared };
   }
   if (best) return `Shares ${joinNames(best.shared.slice(0, 2))} with ${best.seed.name}`;
+
+  // Seeds from /search may carry no tags; the profile tags still come from the same seeds.
+  const profileShared = [...new Set(profile.map((t) => pickTags.get(t.id) ?? pickTags.get(tagKey(t))).filter((t) => !!t).map((t) => tagKey(t!)))];
+  if (profileShared.length > 0) return `Matches your taste for ${joinNames(profileShared.slice(0, 2))}`;
 
   if (pick.affinity !== undefined) return `Strong taste match (${Math.round(pick.affinity * 100)}%)`;
   return "Recommended by Qloo for your taste";

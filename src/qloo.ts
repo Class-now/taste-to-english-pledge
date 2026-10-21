@@ -201,6 +201,20 @@ export class HttpQlooClient implements QlooClient {
     }
   }
 
+  /**
+   * The comma-joined `filter.tag.types` value is unconfirmed on every endpoint; if Qloo rejects the
+   * request with 400, retry once without it. Callers already keep only `:media` tags client-side.
+   */
+  private async getWithTagTypeFallback(path: string, q: Query): Promise<unknown> {
+    try {
+      return await this.get(path, q);
+    } catch (err) {
+      if (!(err instanceof QlooError) || err.status !== 400) throw err;
+      const { "filter.tag.types": _omit, ...rest } = q;
+      return this.get(path, rest);
+    }
+  }
+
   /** Runs a request; when it uses the videogame URN and gets 403, retries once with `video_game`. */
   private async getWithVideogameFallback(path: string, q: Query, usesVideogame: boolean): Promise<unknown> {
     try {
@@ -257,7 +271,7 @@ export class HttpQlooClient implements QlooClient {
 
   async entityTags(entityIds: string[], take = 20): Promise<QlooTag[]> {
     const body = rec(
-      await this.get("/v2/insights", {
+      await this.getWithTagTypeFallback("/v2/insights", {
         "filter.type": "urn:tag",
         "signal.interests.entities": entityIds,
         "filter.tag.types": MEDIA_TAG_TYPES,
@@ -270,7 +284,7 @@ export class HttpQlooClient implements QlooClient {
 
   async searchTags(query: string, take = 10): Promise<QlooTag[]> {
     const body = rec(
-      await this.get("/v2/tags", {
+      await this.getWithTagTypeFallback("/v2/tags", {
         "filter.query": query,
         "feature.semantic_search": true,
         "filter.tag.types": MEDIA_TAG_TYPES,

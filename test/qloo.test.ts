@@ -209,6 +209,22 @@ describe("HttpQlooClient", () => {
     expect(q.get("filter.tag.types")).toBe("urn:tag:genre:media,urn:tag:keyword:media");
   });
 
+  it("retries tag requests without filter.tag.types when Qloo rejects it with 400", async () => {
+    const { c, calls } = client([
+      { status: 400, body: { error: { message: "invalid filter.tag.types" } } },
+      { status: 200, body: TAGS_BODY },
+      { status: 400, body: { error: { message: "invalid filter.tag.types" } } },
+      { status: 200, body: TAGS_BODY },
+    ]);
+    expect(await c.entityTags(["S1"], 20)).toHaveLength(2);
+    expect(calls[0].url.searchParams.get("filter.tag.types")).not.toBeNull();
+    expect(calls[1].url.searchParams.get("filter.tag.types")).toBeNull();
+    expect(calls[1].url.searchParams.get("signal.interests.entities")).toBe("S1");
+    expect(await c.searchTags("mystery", 3)).toHaveLength(2);
+    expect(calls[3].url.searchParams.get("filter.tag.types")).toBeNull();
+    expect(calls[3].url.searchParams.get("filter.query")).toBe("mystery");
+  });
+
   it("throws QlooError with nested or flat error messages", async () => {
     const nested = client([
       { status: 401, body: { error: { reason: "No API key found in request", message: "Unauthorized", code: 401 } } },

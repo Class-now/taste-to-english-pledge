@@ -177,7 +177,8 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
 
   // 3. profile
   const profile = await step("profile", async () => {
-    const tags = await deps.qloo.entityTags(seedIds, 20);
+    // Without a tag-type filter Qloo can return style or place tags; keep media tags like refine does.
+    const tags = (await deps.qloo.entityTags(seedIds, 20)).filter((t) => `${t.id} ${t.subtype ?? ""}`.includes(":media"));
     const value = [...tags].sort((a, b) => (b.affinity ?? 0) - (a.affinity ?? 0)).slice(0, PROFILE_SIZE);
     return { value, detail: value.length ? value.map((t) => t.name).join(", ") : "No taste tags returned" };
   });

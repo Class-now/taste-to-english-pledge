@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 import type { LlmJsonOptions } from "../src/llm";
 import { FakeLlm } from "./fake-llm";
+import { resetRateLimits } from "../src/ratelimit";
 import { installMemoryCaches, type MemoryCache } from "./memory-cache";
 
 /** Fake Workers AI binding: routes each `run` through FakeLlm so WorkersAiLlm is exercised for real. */
@@ -48,6 +49,7 @@ function plan(body: unknown, ip = "203.0.113.7", raw?: string) {
 let cache: MemoryCache;
 beforeEach(() => {
   cache = installMemoryCaches();
+  resetRateLimits();
 });
 afterEach(() => {
   delete (globalThis as { caches?: unknown }).caches;

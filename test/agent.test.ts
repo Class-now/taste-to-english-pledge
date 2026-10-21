@@ -190,6 +190,21 @@ describe("runPlan", () => {
     expect(JSON.stringify(err.trace)).not.toContain("model down");
   });
 
+  it("keeps only media tags in the taste profile", async () => {
+    const qloo = new (class extends MockQlooClient {
+      override async entityTags(ids: string[], take?: number) {
+        const real = await super.entityTags(ids, take);
+        return [
+          { id: "urn:tag:style:qloo:athletic", name: "Athletic", subtype: "urn:tag:style:qloo", affinity: 99 },
+          ...real,
+        ];
+      }
+    })();
+    const r = await runPlan(base, { qloo, llm: new FakeLlm(), mode: "mock" });
+    expect(r.profile.length).toBeGreaterThan(0);
+    expect(r.profile.map((t) => t.name)).not.toContain("Athletic");
+  });
+
   it("keeps raw Qloo errors out of the user-facing message and trace", async () => {
     const qloo = new (class extends MockQlooClient {
       override async entityTags(): Promise<never> {

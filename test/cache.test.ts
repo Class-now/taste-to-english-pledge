@@ -72,14 +72,21 @@ describe("CachedQlooClient", () => {
 describe("checkRateLimit", () => {
   it("allows the limit per hour per IP and resets next hour", async () => {
     const cache = new MemoryCache() as unknown as Cache;
+    const memory = new Map<string, number>();
     const now = Date.UTC(2026, 9, 21, 10, 5);
-    for (let i = 1; i <= 3; i++) expect(await checkRateLimit("1.2.3.4", { cache, limit: 3, now })).toMatchObject({ allowed: true, count: i });
-    expect((await checkRateLimit("1.2.3.4", { cache, limit: 3, now })).allowed).toBe(false);
-    expect((await checkRateLimit("5.6.7.8", { cache, limit: 3, now })).allowed).toBe(true);
-    expect((await checkRateLimit("1.2.3.4", { cache, limit: 3, now: now + 3600_000 })).allowed).toBe(true);
+    for (let i = 1; i <= 3; i++) expect(await checkRateLimit("1.2.3.4", { cache, memory, limit: 3, now })).toMatchObject({ allowed: true, count: i });
+    expect((await checkRateLimit("1.2.3.4", { cache, memory, limit: 3, now })).allowed).toBe(false);
+    expect((await checkRateLimit("5.6.7.8", { cache, memory, limit: 3, now })).allowed).toBe(true);
+    expect((await checkRateLimit("1.2.3.4", { cache, memory, limit: 3, now: now + 3600_000 })).allowed).toBe(true);
   });
 
-  it("allows when no cache is available", async () => {
-    expect((await checkRateLimit("1.2.3.4", { cache: undefined })).allowed).toBe(true);
+  it("still limits with the in-memory count when the Cache API stores nothing (workers.dev)", async () => {
+    const noop = { match: async () => undefined, put: async () => {} } as unknown as Cache;
+    const memory = new Map<string, number>();
+    const now = Date.UTC(2026, 9, 21, 10, 5);
+    for (let i = 0; i < 2; i++) expect((await checkRateLimit("1.2.3.4", { cache: noop, memory, limit: 2, now })).allowed).toBe(true);
+    expect((await checkRateLimit("1.2.3.4", { cache: noop, memory, limit: 2, now })).allowed).toBe(false);
+    for (let i = 0; i < 2; i++) expect((await checkRateLimit("5.6.7.8", { cache: undefined, memory, limit: 2, now })).allowed).toBe(true);
+    expect((await checkRateLimit("5.6.7.8", { cache: undefined, memory, limit: 2, now })).allowed).toBe(false);
   });
 });

@@ -84,10 +84,10 @@ Do NOT implement: frontend files, deployment, README.
 - Visual style: calm, bookish — warm off-white background, deep ink text, one accent colour (e.g. teal #0f766e), rounded 12px cards, generous spacing. No emoji as icons.
 - Escape all server strings before inserting into the DOM (use `textContent`, never `innerHTML` with data).
 
-- [ ] `public/index.html`, `public/styles.css`, `public/app.js` implement the flow above against `POST /api/plan` and `GET /api/health`
-- [ ] No `innerHTML` assignment with server data (grep check) and no external scripts
-- [ ] `npx wrangler dev` smoke: `curl -s localhost:8787/` returns the page and `curl -s localhost:8787/api/health` returns `{"ok":true,"mode":"mock"}` (start `npx wrangler dev --port 8787` in the background, check, then stop it)
-- [ ] All validation commands pass
+- [x] `public/index.html`, `public/styles.css`, `public/app.js` implement the flow above against `POST /api/plan` and `GET /api/health`
+- [x] No `innerHTML` assignment with server data (grep check) and no external scripts
+- [x] `npx wrangler dev` smoke (run on port 8799 because 8787 is used by another local service): `curl -s localhost:8787/` returns the page and `curl -s localhost:8787/api/health` returns `{"ok":true,"mode":"mock"}` (start `npx wrangler dev --port 8787` in the background, check, then stop it)
+- [x] All validation commands pass
 
 Do NOT implement: new API fields, accounts, persistence, analytics, service worker.
 

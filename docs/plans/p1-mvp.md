@@ -62,10 +62,10 @@ Do NOT implement: HTTP routes, frontend, caching, rate limiting.
 - Responses: `content-type: application/json; charset=utf-8`, `cache-control: no-store`.
 - Tests (`test/routes.test.ts`): call the default export's `fetch` with a fake env (fake AI returning canned JSON through `WorkersAiLlm`, no `QLOO_API_KEY` → mock mode, `caches` stubbed with an in-memory implementation on `globalThis`): health returns mock; valid plan returns 200 with picks; invalid body 400; 21st request in the hour 429; unknown api path 404.
 
-- [ ] `src/index.ts`, `src/cache.ts`, `src/ratelimit.ts` implemented as above
-- [ ] Route tests pass (health, 200 plan, 400, 429, 404)
-- [ ] `npx wrangler deploy --dry-run --outdir /tmp/ttE-dry` succeeds
-- [ ] `npx tsc --noEmit` passes
+- [x] `src/index.ts`, `src/cache.ts`, `src/ratelimit.ts` implemented as above
+- [x] Route tests pass (health, 200 plan, 400, 429, 404)
+- [x] `npx wrangler deploy --dry-run --outdir /tmp/ttE-dry` succeeds
+- [x] `npx tsc --noEmit` passes
 
 Do NOT implement: frontend files, deployment, README.
 

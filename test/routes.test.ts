@@ -86,7 +86,7 @@ describe("worker routes", () => {
     expect(res.status).toBe(200);
     const keys = [...cache.store.keys()].filter((k) => k.startsWith("https://qloo-cache.local/"));
     expect(keys.length).toBeGreaterThan(0);
-    expect(keys.some((k) => k.includes("/mock/search"))).toBe(true);
+    expect(keys.some((k) => k.includes("/v1-mock/search"))).toBe(true);
   });
 
   it("returns 400 for invalid JSON", async () => {

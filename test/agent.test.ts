@@ -138,7 +138,152 @@ describe("runPlan", () => {
     const err = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" }).catch((e) => e);
     expect(err).toBeInstanceOf(AgentError);
     expect(err.step).toBe("plan");
-    expect(err.trace.at(-1)).toMatchObject({ id: "plan", detail: "Failed: model down" });
+    expect(err.message).toBe("The AI couldn't write your plan. Please try again.");
+    expect(err.trace.at(-1)).toMatchObject({ id: "plan", detail: `Failed: ${err.message}` });
+    expect(JSON.stringify(err.trace)).not.toContain("model down");
+  });
+
+  it("keeps raw Qloo errors out of the user-facing message and trace", async () => {
+    const qloo = new (class extends MockQlooClient {
+      override async entityTags(): Promise<never> {
+        throw new Error("Qloo 403: key quota exceeded for account 42");
+      }
+    })();
+    const err = await runPlan(base, { qloo, llm: new FakeLlm(), mode: "mock" }).catch((e) => e);
+    expect(err).toBeInstanceOf(AgentError);
+    expect(err.step).toBe("profile");
+    expect(err.message).toBe("Qloo couldn't build your taste profile. Please try again.");
+    expect(JSON.stringify(err.trace)).not.toContain("quota");
+  });
+
+  it("matches normalize rows by index, not position", async () => {
+    const llm = new FakeLlm({
+      normalize: () => ({
+        items: [
+          { index: 2, query: "Norwegian Wood", typeGuess: "book" },
+          { index: 0, query: "Spirited Away", typeGuess: "movie" },
+        ],
+      }),
+    });
+    const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });
+    expect(r.trace[0].detail).toContain('"千と千尋の神隠し" → "Spirited Away" (movie)');
+    expect(r.trace[0].detail).toContain('"ノルウェイの森" → "Norwegian Wood" (book)');
+    // The skipped favourite falls back to its own title with no type guess.
+    expect(r.trace[0].detail).toContain('"ペルソナ5" → "ペルソナ5";');
+  });
+
+  it("re-asks the level step for candidates the model skipped", async () => {
+    let calls = 0;
+    const llm = new FakeLlm({
+      level: (opts) => {
+        calls++;
+        const items = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { id: string; type: string }[];
+        // First answer rates only one candidate, the follow-up rates the rest.
+        const rows = items.map((c) => ({ id: c.id, cefr: "B1", reason: "fake" }));
+        return { items: calls === 1 ? rows.slice(0, 1) : rows };
+      },
+    });
+    const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });
+    expect(calls).toBe(2);
+    expect(r.picks.length).toBeGreaterThanOrEqual(6);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("warns when fewer than six picks fit the level", async () => {
+    const llm = new FakeLlm({
+      level: (opts) => {
+        const items = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { id: string }[];
+        return { items: items.map((c, i) => ({ id: c.id, cefr: i < 3 ? "B1" : "C2", reason: "fake" })) };
+      },
+    });
+    const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });
+    expect(r.picks).toHaveLength(3);
+    expect(r.warnings).toContain("Only 3 works matched your level closely");
+  });
+
+  it("fails the level step when nothing fits the learner's level", async () => {
+    const llm = new FakeLlm({
+      level: (opts) => {
+        const items = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { id: string }[];
+        return { items: items.map((c) => ({ id: c.id, cefr: "C2", reason: "fake" })) };
+      },
+    });
+    const err = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" }).catch((e) => e);
+    expect(err).toBeInstanceOf(AgentError);
+    expect(err.step).toBe("level");
+    expect(err.message).toMatch(/None of the matches fit your English level/);
+  });
+
+  it("drops non-English candidates and keeps ones with no language", async () => {
+    const entity = (id: string, language?: string) => ({ id, name: id, type: "podcast" as const, tags: [], affinity: 0.9, language });
+    const qloo = new (class extends MockQlooClient {
+      override async insights() {
+        return [entity("ja-show", "ja"), entity("en-show", "en"), entity("unknown-show")];
+      }
+    })();
+    const llm = new FakeLlm();
+    const r = await runPlan({ ...base, formats: ["listen"] }, { qloo, llm, mode: "mock" });
+    const levelCall = llm.calls.find((c) => c.kind === "level")!;
+    expect(levelCall.opts.user).not.toContain("ja-show");
+    expect(r.trace.find((t) => t.id === "recommend")!.detail).toBe("Found 2 podcasts");
+  });
+
+  it("keeps going when one media type fails and fails when all do", async () => {
+    class Flaky extends MockQlooClient {
+      constructor(private readonly failing: (type: string) => boolean) {
+        super();
+      }
+      override async insights(p: InsightsParams) {
+        if (this.failing(p.type)) throw new Error("Qloo 500");
+        return super.insights(p);
+      }
+    }
+    const r = await runPlan(base, { qloo: new Flaky((t) => t === "podcast"), llm: new FakeLlm(), mode: "mock" });
+    expect(r.warnings).toContain("Qloo couldn't search podcasts this time");
+    expect(r.picks.some((p) => p.format === "listen")).toBe(false);
+
+    const err = await runPlan(base, { qloo: new Flaky(() => true), llm: new FakeLlm(), mode: "mock" }).catch((e) => e);
+    expect(err).toBeInstanceOf(AgentError);
+    expect(err.step).toBe("recommend");
+    expect(err.message).toBe("Qloo couldn't find recommendations. Please try again.");
+  });
+
+  it("matches avoid phrases as whole words", async () => {
+    const tag = (name: string) => ({ id: `t-${name}`, name });
+    const qloo = new (class extends MockQlooClient {
+      override async insights() {
+        return [
+          { id: "war-show", name: "war-show", type: "podcast" as const, affinity: 0.9, tags: [tag("War")] },
+          { id: "software-show", name: "software-show", type: "podcast" as const, affinity: 0.8, tags: [tag("Software")] },
+        ];
+      }
+    })();
+    const llm = new FakeLlm({
+      refine: () => ({ addTags: [], avoidTags: ["war"] }),
+      level: (opts) => {
+        const items = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { id: string }[];
+        return { items: items.map((c) => ({ id: c.id, cefr: "B1", reason: "fake" })) };
+      },
+    });
+    const r = await runPlan({ ...base, formats: ["listen"], refine: "no war" }, { qloo, llm, mode: "mock" });
+    expect(r.trace.find((t) => t.id === "recommend")!.detail).toBe("Found 1 podcast");
+    expect(r.picks.map((p) => p.id)).toEqual(["software-show"]);
+  });
+
+  it("forces day 1 to the easiest pick and warns about short vocabulary", async () => {
+    const llm = new FakeLlm({
+      plan: (opts) => {
+        const input = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { picks: { id: string }[] };
+        return {
+          days: [{ day: 1, pickId: input.picks[1].id, activity: "Start with the second pick", minutes: 20 }],
+          vocab: [],
+        };
+      },
+    });
+    const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });
+    expect(r.plan[0].pickId).toBe(r.picks[0].id);
+    expect(r.plan[0].activity).not.toBe("Start with the second pick");
+    expect(r.warnings).toContain("Only 0 starter words could be written this time");
   });
 
   it("drops invalid plan days and fills them in", async () => {

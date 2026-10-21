@@ -46,7 +46,7 @@ export function normalizePrompt(items: NormalizeItem[]): LlmJsonOptions {
         `and the most likely media type as \`typeGuess\`, one of: ${ENTITY_TYPES.join(", ")}.`,
         "Anime series are tv_show; anime films are movie; video games are videogame; novels and manga are book.",
         "If an item already has a `type`, use exactly that type.",
-        "Return one result per input item, in the same order.",
+        `Return exactly ${items.length} results, one per input item, each with the item's \`index\`.`,
       ].join("\n"),
     ),
     user: user("Favourite works:", items),
@@ -55,13 +55,16 @@ export function normalizePrompt(items: NormalizeItem[]): LlmJsonOptions {
       properties: {
         items: {
           type: "array",
+          minItems: items.length,
+          maxItems: items.length,
           items: {
             type: "object",
             properties: {
+              index: { type: "integer" },
               query: { type: "string" },
               typeGuess: { type: "string", enum: [...ENTITY_TYPES] },
             },
-            required: ["query", "typeGuess"],
+            required: ["index", "query", "typeGuess"],
           },
         },
       },
@@ -114,7 +117,7 @@ export function levelPrompt(learnerLevel: string, candidates: LevelCandidate[]):
         "You estimate how hard the English in each work is for a learner, on the CEFR scale (A2, B1, B2, C1, C2).",
         "Consider vocabulary, sentence length, speech speed and target audience (children's/young-adult works are easier).",
         "These are honest estimates, not certainties. Give a one-line `reason` (max 120 characters) per work.",
-        "Return one item per candidate, using the candidate's `id`.",
+        `There are ${candidates.length} candidates. Return exactly ${candidates.length} items, one per candidate, using the candidate's \`id\`.`,
       ].join("\n"),
     ),
     user: user(`Learner level: ${learnerLevel}. Candidates:`, candidates),
@@ -123,10 +126,12 @@ export function levelPrompt(learnerLevel: string, candidates: LevelCandidate[]):
       properties: {
         items: {
           type: "array",
+          minItems: candidates.length,
+          maxItems: candidates.length,
           items: {
             type: "object",
             properties: {
-              id: { type: "string" },
+              id: { type: "string", enum: candidates.map((c) => c.id) },
               cefr: { type: "string", enum: [...CEFR_LEVELS] },
               reason: { type: "string" },
             },
@@ -165,6 +170,8 @@ export function planPrompt(input: PlanPromptInput): LlmJsonOptions {
       properties: {
         days: {
           type: "array",
+          minItems: 7,
+          maxItems: 7,
           items: {
             type: "object",
             properties: {
@@ -178,6 +185,8 @@ export function planPrompt(input: PlanPromptInput): LlmJsonOptions {
         },
         vocab: {
           type: "array",
+          minItems: 12,
+          maxItems: 12,
           items: {
             type: "object",
             properties: {

@@ -1,11 +1,27 @@
 {
   "project": "qloo-reading-planner (Taste-to-English)",
-  "updated": "2026-10-21T16:40+09:00",
+  "updated": "2026-10-21T18:30+09:00",
   "deadline": "2026-10-31T12:45+09:00 (submit by 10/30)",
   "canonical_status": "/Users/classnow/Desktop/contest-pm/contests/1031-qloo/status.md",
   "design": "docs/design.md",
-  "phase": "P1 MVP build (mock Qloo until key arrives)",
-  "done": ["repo init, package.json/wrangler.jsonc/tsconfig/LICENSE(MIT), deps installed", "docs/design.md"],
-  "next": ["docs/qloo-api-notes.md (research subagent)", "ralphex plan docs/plans/p1-mvp.md", "run ralphex, verify, merge", "create public GitHub repo + deploy to Workers"],
-  "blocked_on_human": ["Devpost account creation", "OK to submit Qloo API key form"]
+  "phase": "P1 MVP built on branch p1-mvp; ralphex code review in progress",
+  "done": [
+    "repo init, package.json/wrangler.jsonc/tsconfig/LICENSE(MIT), deps installed",
+    "docs/design.md",
+    "docs/qloo-api-notes.md",
+    "ralphex plan docs/plans/p1-mvp.md",
+    "ralphex Tasks 1-5 (Qloo client+mock, agent, routes, frontend, README) on p1-mvp",
+    "review round 1 fixes: LLM array-length schemas + level re-ask (1-pick bug), no raw errors to client, Qloo timeout, cache namespace"
+  ],
+  "next": [
+    "finish ralphex review loop, merge p1-mvp to main",
+    "create public GitHub repo + deploy to Workers",
+    "replace DEMO_URL in README",
+    "on deployed host: verify 21st plan/hour gets 429 (Cache API may not persist on workers.dev)",
+    "live run with real Qloo key + Workers AI: confirm 6-9 picks and 12 vocab"
+  ],
+  "blocked_on_human": [
+    "Devpost account creation",
+    "OK to submit Qloo API key form"
+  ]
 }

@@ -47,7 +47,7 @@ All calls are `GET` requests to `https://hackathon.api.qloo.com` with the `X-Api
 | Recommend | `GET /v2/insights`, once per media type (`urn:entity:book`, `urn:entity:podcast`, `urn:entity:tv_show`, `urn:entity:movie`) | Cross-domain recommendations from the favourites, with the reasons attached | `filter.type`, `signal.interests.entities=<ids>`, `filter.exclude.entities=<ids>`, `feature.explainability=true`, `take=15`; on refine also `signal.interests.tags=<tag ids>` and year filters (`filter.publication_year.min/max` for books, `filter.release_year.min/max` for movies and TV) |
 | Refine | `GET /v2/tags` | Map free-text wishes ("more mystery") to real Qloo tag IDs | `filter.query`, `feature.semantic_search=true`, `take=3` |
 
-Array params are sent as one comma-joined value. For games, if the API rejects `urn:entity:videogame`, the client retries once with `urn:entity:video_game`. GET responses are cached server-side for 24 hours. More detail: [`docs/qloo-api-notes.md`](docs/qloo-api-notes.md).
+Array params are sent as one comma-joined value. For games, if the API rejects `urn:entity:videogame`, the client retries once with `urn:entity:video_game`. Each Qloo client call's parsed, non-empty result is cached server-side for 24 hours (see Architecture). More detail: [`docs/qloo-api-notes.md`](docs/qloo-api-notes.md).
 
 ## Example: request → result
 
@@ -113,13 +113,23 @@ The response has this shape (trimmed):
 
 The CEFR level, reason, plan and vocabulary values above are illustrative LLM output.
 
-Error responses:
+`warnings` lists problems that did not stop the plan:
+
+- `Couldn't find "<title>"`: a favourite didn't resolve in Qloo and was skipped.
+- `Qloo couldn't search <type>s this time`: one media type's recommendation call failed. The other types still count. The step fails only if every type fails.
+- `Only N works matched your level closely`: fewer than 6 picks were left after the level filter.
+- `Only N starter words could be written this time`: the model returned fewer than 12 vocabulary items.
+
+Error responses (all `/api/*` responses send `cache-control: no-store`):
 
 | Status | Meaning | Body |
 |---|---|---|
-| `400` | Invalid input | `{ error }` |
-| `429` | Rate limited | `{ error }` |
-| `502` | A pipeline step failed | `{ error, step, trace }` |
+| `400` | Body is not valid JSON, or fails validation | `{ error }` |
+| `404` | Unknown `/api/*` path | `{ error: "Not found" }` |
+| `405` | `/api/plan` with a method other than `POST` | `{ error }` |
+| `429` | More than 20 plans this hour from your IP | `{ error: "Too many plans this hour, try again later." }` |
+| `500` | Unexpected server error (details go to the Worker log only) | `{ error: "Something went wrong" }` |
+| `502` | A pipeline step failed | `{ error, step, trace }`. `step` is one of `normalize`, `resolve`, `profile`, `refine`, `recommend`, `level`, `explain`, `plan`. `error` is a fixed, user-facing message; raw upstream errors are never returned. |
 
 `GET /api/health` returns `{ "ok": true, "mode": "live" | "mock" }`.
 
@@ -140,7 +150,8 @@ flowchart LR
 - One Cloudflare Worker written in TypeScript. Static assets in `public/` are served by Workers Assets, and `/api/*` runs in the Worker first.
 - **Workers AI** (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`) returns structured JSON through `response_format: json_schema`. It sits behind a small interface, so the tests use a fake.
 - **Qloo client** (`src/qloo.ts`) has an HTTP implementation and a mock implementation. The app is in live mode exactly when the `QLOO_API_KEY` secret is set, and the UI labels mock mode clearly.
-- The **Cache API** stores Qloo GET responses for 24 hours. The cache key is the request URL, and the API key is never part of it.
+- The **Cache API** (`caches.default`) stores the parsed result of each Qloo client call (`search`, `insights`, `entityTags`, `searchTags`) for 24 hours. The key is a synthetic URL, `https://qloo-cache.local/v1-<live|mock>/<method>?<sorted args>`, so live and mock results never mix. The API key is never part of the key or the stored body. Empty results are not cached, and cache failures fall back to a direct call. Qloo requests time out after 10 seconds.
+- **Agent details**: the recommend step drops works whose `language` is set and isn't English. The level step sends at most 40 candidates to the model, taken round-robin across media types, and asks once more for any the model skipped. Refine's "less of" phrases remove candidates with a tag matching that phrase as a whole word; this costs no Qloo call.
 - **Abuse guard**: 20 plans per IP per hour (best effort), plus input caps of ≤ 5 favourites, titles ≤ 80 characters and refine text ≤ 200 characters.
 
 Design notes: [`docs/design.md`](docs/design.md).
@@ -178,12 +189,23 @@ npx wrangler deploy
 
 `GET /api/health` shows which mode is active.
 
+Configuration (`wrangler.jsonc` plus secrets):
+
+| Name | Kind | Purpose |
+|---|---|---|
+| `QLOO_API_KEY` | secret, optional | Its presence switches the app to live mode |
+| `QLOO_BASE_URL` | var | Qloo API origin, default `https://hackathon.api.qloo.com` |
+| `AI` | Workers AI binding | The LLM |
+| `ASSETS` | Workers Assets binding | Serves `public/`; `/api/*` runs in the Worker first |
+
+`npm run dev`, `npm run deploy` and `npm run type-check` wrap the matching `wrangler` / `tsc` commands.
+
 ## Limits
 
 - **The mock dataset is small.** It has a few dozen hand-written titles, so mock-mode picks repeat across inputs. Live mode needs a Qloo hackathon key.
 - **Difficulty is an LLM estimate,** not a measured readability score. When few candidates land near your level, you get fewer than 6 picks and a warning.
 - **Qloo coverage varies by title.** Niche Japanese works may not resolve. The trace says which favourites were skipped.
-- **The rate limit and cache are per Cloudflare data centre and best effort.** They are not globally exact.
+- **The rate limit and cache are per Cloudflare data centre and best effort.** They are not globally exact, and parallel requests can slip past the counter. Both use the Cache API, which may not persist anything on a `*.workers.dev` hostname. Check after deploying, for example by confirming that the 21st plan in an hour gets a `429`. A custom domain makes both effective.
 - **The UI is in English** with Japanese glosses. There is no progress tracking, no saved plans and no audio playback.
 
 ## License

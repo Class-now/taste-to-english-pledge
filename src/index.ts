@@ -36,7 +36,7 @@ async function handlePlan(request: Request, env: Env): Promise<Response> {
   try {
     const mode = qlooMode(env);
     const result = await runPlan(parsed.value, {
-      qloo: new CachedQlooClient(createQlooClient(env), undefined, mode),
+      qloo: new CachedQlooClient(createQlooClient(env), undefined, `v1-${mode}`),
       llm: new WorkersAiLlm(env.AI),
       mode,
     });

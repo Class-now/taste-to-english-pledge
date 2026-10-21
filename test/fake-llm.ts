@@ -23,7 +23,9 @@ export class FakeLlm implements Llm {
     switch (kind) {
       case "normalize": {
         const items = promptInput<NormalizeItem[]>(opts.user);
-        return { items: items.map((i) => ENGLISH_TITLES[i.title] ?? { query: i.title, typeGuess: i.type ?? "book" }) } as T;
+        return {
+          items: items.map((i) => ({ index: i.index, ...(ENGLISH_TITLES[i.title] ?? { query: i.title, typeGuess: i.type ?? "book" }) })),
+        } as T;
       }
       case "refine":
         return { addTags: ["mystery"], avoidTags: ["romance"] } as T;

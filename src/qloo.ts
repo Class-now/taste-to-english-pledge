@@ -48,6 +48,7 @@ type Query = Record<string, string | number | boolean | string[] | undefined>;
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+const REQUEST_TIMEOUT_MS = 10_000;
 
 // ---- defensive parsing helpers ----
 
@@ -174,11 +175,16 @@ export class HttpQlooClient implements QlooClient {
 
   private async get(path: string, q: Query): Promise<unknown> {
     const url = this.buildUrl(path, q);
-    const init: RequestInit = { method: "GET", headers: { "X-Api-Key": this.apiKey, Accept: "application/json" } };
-    let res = await this.fetchFn(url, init);
+    // A fresh timeout per attempt so a hung Qloo endpoint fails the step instead of stalling the request.
+    const init = (): RequestInit => ({
+      method: "GET",
+      headers: { "X-Api-Key": this.apiKey, Accept: "application/json" },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    let res = await this.fetchFn(url, init());
     if (RETRYABLE.has(res.status)) {
       await new Promise((r) => setTimeout(r, this.retryDelayMs));
-      res = await this.fetchFn(url, init);
+      res = await this.fetchFn(url, init());
     }
     const text = await res.text();
     if (!res.ok) {

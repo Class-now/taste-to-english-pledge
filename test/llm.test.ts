@@ -38,4 +38,16 @@ describe("WorkersAiLlm", () => {
     await expect(new WorkersAiLlm(ai).json(opts)).rejects.toBeInstanceOf(LlmError);
     expect(n).toBe(2);
   });
+
+  it("retries when the model call itself rejects and reports the reason", async () => {
+    let n = 0;
+    const ai = {
+      run: async () => {
+        n++;
+        throw new Error("boom");
+      },
+    };
+    await expect(new WorkersAiLlm(ai).json(opts)).rejects.toThrow(/AI model call failed: boom/);
+    expect(n).toBe(2);
+  });
 });

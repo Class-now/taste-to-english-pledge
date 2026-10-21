@@ -37,6 +37,7 @@ const ICONS = {
   videogame: ["M6 8h12a4 4 0 0 1 4 4v1a4 4 0 0 1-7 2.6L14 15h-4l-1 .6A4 4 0 0 1 2 13v-1a4 4 0 0 1 4-4z", "M7 11v3", "M5.5 12.5h3", "M16 12h.01", "M18 13.5h.01"],
   artist: ["M9 18V5l11-2v13", "M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3z", "M20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z"],
   check: ["M5 12.5l4.5 4.5L19 7"],
+  close: ["M6 6l12 12M18 6L6 18"],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -158,7 +159,7 @@ function addFavoriteRow(value = { title: "", type: "" }) {
   type.value = value.type || "";
 
   const remove = el("button", { type: "button", class: "icon-btn", "aria-label": "Remove this favourite" });
-  remove.append(svgClose());
+  remove.append(icon("close"));
   remove.addEventListener("click", () => {
     li.remove();
     syncRows();
@@ -178,17 +179,6 @@ function addFavoriteRow(value = { title: "", type: "" }) {
   els.favorites.append(li);
   syncRows();
   return title;
-}
-
-function svgClose() {
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("aria-hidden", "true");
-  const p = document.createElementNS(NS, "path");
-  p.setAttribute("d", "M6 6l12 12M18 6L6 18");
-  svg.append(p);
-  return svg;
 }
 
 function syncRows() {
@@ -452,9 +442,7 @@ async function run(input) {
       scrollIntoViewIfNeeded(els.agentPanel.hidden ? els.results : els.agentPanel);
     } else {
       renderTrace(data && data.trace, data && data.step);
-      const msg = res.status === 429
-        ? (data && data.error) || "Too many plans this hour, try again later."
-        : (data && data.error) || `The server answered with an error (${res.status}).`;
+      const msg = (data && data.error) || `The server answered with an error (${res.status}).`;
       showError(msg, data && data.step);
       scrollIntoViewIfNeeded(els.errorBox);
     }

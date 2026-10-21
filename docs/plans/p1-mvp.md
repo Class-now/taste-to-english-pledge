@@ -1,5 +1,7 @@
 # Plan: P1 MVP — Taste-to-English (Qloo Agentic Hackathon)
 
+Status: all tasks complete on branch `p1-mvp` (2026-10-21). Still open, outside this plan: deploy to Workers, replace the `DEMO_URL` placeholder in README, check the rate limit on the deployed host.
+
 Context for every task: this repo is a Cloudflare Worker (TypeScript, `src/index.ts`) with static assets in `public/` (Workers Assets, binding `ASSETS`, `run_worker_first: ["/api/*"]`), a Workers AI binding `AI`, and a var `QLOO_BASE_URL=https://hackathon.api.qloo.com`. `QLOO_API_KEY` is an optional secret: when absent the app runs in **mock mode**. Product and pipeline design: `docs/design.md` (read it first). Qloo API facts: `docs/qloo-api-notes.md` (read sections 0–3 before touching the Qloo client). Config already exists: `package.json` (scripts `test`, `type-check`, `dev`, `deploy`), `tsconfig.json` (strict), `wrangler.jsonc`, `LICENSE` (MIT). Do not change `wrangler.jsonc` bindings or the license. No new runtime dependencies (devDependencies only if essential). Never write a real API key anywhere; never commit Qloo response data (mock fixtures are hand-written by us and labelled as such).
 
 ## Validation Commands
@@ -86,7 +88,7 @@ Do NOT implement: frontend files, deployment, README.
 
 - [x] `public/index.html`, `public/styles.css`, `public/app.js` implement the flow above against `POST /api/plan` and `GET /api/health`
 - [x] No `innerHTML` assignment with server data (grep check) and no external scripts
-- [x] `npx wrangler dev` smoke (run on port 8799 because 8787 is used by another local service): `curl -s localhost:8787/` returns the page and `curl -s localhost:8787/api/health` returns `{"ok":true,"mode":"mock"}` (start `npx wrangler dev --port 8787` in the background, check, then stop it)
+- [x] `npx wrangler dev` smoke (run on port 8799 because 8787 is used by another local service): `curl -s localhost:8799/` returns the page and `curl -s localhost:8799/api/health` returns `{"ok":true,"mode":"mock"}` (start `npx wrangler dev --port 8799` in the background, check, then stop it)
 - [x] All validation commands pass
 
 Do NOT implement: new API fields, accounts, persistence, analytics, service worker.

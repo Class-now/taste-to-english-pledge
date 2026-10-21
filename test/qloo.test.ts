@@ -101,6 +101,7 @@ describe("HttpQlooClient", () => {
     expect(u.searchParams.has("X-Api-Key")).toBe(false);
     expect(calls[0].init?.method).toBe("GET");
     expect(header(calls[0], "X-Api-Key")).toBe("test-key");
+    expect(calls[0].init?.signal).toBeInstanceOf(AbortSignal);
     expect(res).toEqual([
       {
         id: "E-SPIRITED",

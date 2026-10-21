@@ -6,15 +6,12 @@ const CACHE_ORIGIN = "https://qloo-cache.local";
 
 /** `caches.default` when the Cache API exists (Workers), else undefined (e.g. plain Node). */
 export function defaultCache(): Cache | undefined {
-  try {
-    return (globalThis as { caches?: { default?: Cache } }).caches?.default;
-  } catch {
-    return undefined;
-  }
+  return (globalThis as { caches?: { default?: Cache } }).caches?.default;
 }
 
 /**
- * Caches successful Qloo results for 24h, keyed by a URL built from the call and its parameters.
+ * Caches successful, non-empty Qloo results for 24h, keyed by a URL built from the call and its parameters.
+ * Bump the namespace version when the parsed entity shape changes so stale entries are not served.
  * The API key is never part of the key or the stored body. Cache failures fall through to the inner client.
  */
 export class CachedQlooClient implements QlooClient {
@@ -45,6 +42,8 @@ export class CachedQlooClient implements QlooClient {
       // best effort: a broken cache read is a miss
     }
     const value = await run();
+    // An empty list is often a transient upstream glitch; don't pin it for a day.
+    if (Array.isArray(value) && value.length === 0) return value;
     try {
       await this.cache.put(
         key,

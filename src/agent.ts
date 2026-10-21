@@ -73,7 +73,6 @@ const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const record = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 
 function toEntityType(v: unknown): EntityType | undefined {
-  if (v === "video_game") return "videogame";
   return ENTITY_TYPES.includes(v as EntityType) ? (v as EntityType) : undefined;
 }
 
@@ -104,9 +103,11 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       trace.push({ id, label, detail, ms: Math.round(now() - start) });
       return value;
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      trace.push({ id, label, detail: `Failed: ${reason}`, ms: Math.round(now() - start) });
-      throw new AgentError(id, err instanceof StepFailure ? reason : FAILURE_MESSAGES[id], trace);
+      // Only StepFailure messages are written for users; raw upstream errors stay in the logs.
+      const message = err instanceof StepFailure ? err.message : FAILURE_MESSAGES[id];
+      if (!(err instanceof StepFailure)) console.error(`step ${id} failed:`, err instanceof Error ? err.message : String(err));
+      trace.push({ id, label, detail: `Failed: ${message}`, ms: Math.round(now() - start) });
+      throw new AgentError(id, message, trace);
     }
   }
 
@@ -114,9 +115,14 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
   const normalized = await step("normalize", async () => {
     const items = input.favorites.map((f, index) => ({ index, title: f.title, ...(f.type ? { type: f.type } : {}) }));
     const out = await deps.llm.json<{ items?: unknown }>(normalizePrompt(items));
-    const rows = asArray(record(out).items);
+    // Match rows by the echoed index so a skipped or reordered row can't shift later favourites.
+    const rows = new Map<number, Record<string, unknown>>();
+    for (const raw of asArray(record(out).items)) {
+      const r = record(raw);
+      if (Number.isInteger(r.index) && !rows.has(r.index as number)) rows.set(r.index as number, r);
+    }
     const value = input.favorites.map((f, i) => {
-      const row = record(rows[i]);
+      const row = rows.get(i) ?? {};
       return {
         title: f.title,
         query: isString(row.query) ? row.query.trim() : f.title,
@@ -212,6 +218,8 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       const reason = (failures[0] as PromiseRejectedResult).reason;
       throw reason instanceof Error ? reason : new Error(String(reason));
     }
+    // Whole-word match so a short phrase like "war" doesn't also drop "software" or "award".
+    const avoidPatterns = avoidTags.map((a) => new RegExp(`\\b${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"));
     const seen = new Set(seedIds);
     const value: QlooEntity[] = [];
     const counts: string[] = [];
@@ -224,7 +232,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
         (e) =>
           !seen.has(e.id) &&
           isEnglishOrUnknown(e) &&
-          !e.tags.some((t) => avoidTags.some((a) => t.name.toLowerCase().includes(a))),
+          !e.tags.some((t) => avoidPatterns.some((re) => re.test(t.name))),
       );
       for (const e of kept) seen.add(e.id);
       value.push(...kept);
@@ -256,15 +264,22 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       ...(c.description ? { description: clip(c.description, 200) } : {}),
       ...(c.pageCount ? { pageCount: c.pageCount } : {}),
     }));
-    const out = await deps.llm.json<unknown>(levelPrompt(input.level, payload));
-    const ids = new Set(capped.map((c) => c.id));
-    const levels: LevelEstimate[] = [];
-    for (const raw of asArray(record(out).items)) {
-      const r = record(raw);
-      if (isString(r.id) && ids.has(r.id) && CEFR_LEVELS.includes(r.cefr as Cefr)) {
-        levels.push({ id: r.id, cefr: r.cefr as Cefr, reason: clip(isString(r.reason) ? r.reason.trim() : "", 120) });
+    const rated = new Map<string, LevelEstimate>();
+    const collect = (out: unknown) => {
+      for (const raw of asArray(record(out).items)) {
+        const r = record(raw);
+        if (isString(r.id) && !rated.has(r.id) && payload.some((c) => c.id === r.id) && CEFR_LEVELS.includes(r.cefr as Cefr)) {
+          rated.set(r.id, { id: r.id, cefr: r.cefr as Cefr, reason: clip(isString(r.reason) ? r.reason.trim() : "", 120) });
+        }
       }
+    };
+    collect(await deps.llm.json<unknown>(levelPrompt(input.level, payload)));
+    // Models sometimes stop after a few items; ask once more for the ones they skipped.
+    const missing = payload.filter((c) => !rated.has(c.id));
+    if (missing.length > 0) {
+      collect(await deps.llm.json<unknown>(levelPrompt(input.level, missing)));
     }
+    const levels = [...rated.values()];
     const value = selectPicks(capped, levels, input.level, input.formats);
     if (value.length === 0) {
       throw new StepFailure("None of the matches fit your English level. Try a different level or more favourites.");
@@ -309,6 +324,8 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       const day = d.day as number;
       if (!Number.isInteger(day) || day < 1 || day > 7 || byDay.has(day)) continue;
       if (!isString(d.pickId) || !pickIds.has(d.pickId) || !isString(d.activity)) continue;
+      // Day 1 must be the easiest pick: the vocabulary and the UI's "day 1" label refer to it.
+      if (day === 1 && d.pickId !== picks[0].id) continue;
       byDay.set(day, { day, pickId: d.pickId, activity: clip(d.activity.trim(), 200), minutes: input.minutesPerDay });
     }
     const dropped = 7 - byDay.size;
@@ -324,6 +341,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
         vocab.push({ term: clip(v.term.trim(), 60), ja: clip(v.ja.trim(), 60), example: clip(v.example.trim(), 200) });
       }
     }
+    if (vocab.length < 12) warnings.push(`Only ${vocab.length} starter words could be written this time`);
     const value = { plan: [...byDay.values()].sort((a, b) => a.day - b.day), vocab };
     const detail = `7 days of ${input.minutesPerDay} min, ${vocab.length} starter words${dropped ? ` (${dropped} day${dropped === 1 ? "" : "s"} filled in automatically)` : ""}`;
     return { value, detail };

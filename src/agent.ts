@@ -123,8 +123,11 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       const r = record(raw);
       if (Number.isInteger(r.index) && !rows.has(r.index as number)) rows.set(r.index as number, r);
     }
+    // A model that numbers rows from 1 would otherwise give every favourite its predecessor's query.
+    const n = input.favorites.length;
+    const oneBased = !rows.has(0) && rows.has(n) && [...rows.keys()].every((k) => k >= 1 && k <= n);
     const value = input.favorites.map((f, i) => {
-      const row = rows.get(i) ?? {};
+      const row = rows.get(oneBased ? i + 1 : i) ?? {};
       return {
         title: f.title,
         query: isString(row.query) ? row.query.trim() : f.title,
@@ -190,6 +193,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
   let maxYear: number | undefined;
   if (input.refine) {
     const refineText = input.refine;
+    // Refining is optional: if it fails, keep going with the unrefined plan instead of losing it.
     await step("refine", async () => {
       const out = record(await deps.llm.json<unknown>(refinePrompt(refineText)));
       const add = asArray(out.addTags).filter(isString).map((t) => t.trim()).slice(0, 3);
@@ -197,6 +201,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       const year = (v: unknown) => (Number.isInteger(v) && (v as number) >= 1800 && (v as number) <= 2100 ? (v as number) : undefined);
       minYear = year(out.minYear);
       maxYear = year(out.maxYear);
+      if (minYear !== undefined && maxYear !== undefined && minYear > maxYear) [minYear, maxYear] = [maxYear, minYear];
       const resolved: QlooTag[] = [];
       for (const q of add) {
         // Semantic tag search can return place or brand tags; only media tags make sense as signals.
@@ -210,55 +215,76 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       ];
       if (minYear || maxYear) parts.push(`years: ${minYear ?? "any"}–${maxYear ?? "any"}`);
       return { value: undefined, detail: parts.join("; ") };
+    }).catch(() => {
+      tagIds = [];
+      avoidTags = [];
+      minYear = maxYear = undefined;
+      warnings.push("Couldn't apply your refinement this time, so these are the unrefined picks");
     });
   }
 
   // 4. recommend
   const candidates = await step("recommend", async () => {
     const types = [...new Set(input.formats.flatMap((f: Format) => FORMAT_TYPES[f]))];
-    const settled = await Promise.allSettled(
-      types.map((type) =>
-        deps.qloo.insights({
-          type,
-          entityIds: seedIds,
-          tagIds,
-          excludeIds: seedIds,
-          take: 15,
-          minYear,
-          maxYear,
-          explain: true,
-        }),
-      ),
-    );
-    const failures = settled.filter((s) => s.status === "rejected");
-    if (failures.length === settled.length) {
-      const reason = (failures[0] as PromiseRejectedResult).reason;
-      throw reason instanceof Error ? reason : new Error(String(reason));
-    }
-    // Whole-word match so a short phrase like "war" doesn't also drop "software" or "award".
-    const avoidPatterns = avoidTags.map((a) => new RegExp(`\\b${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"));
-    const seen = new Set(seedIds);
-    const value: QlooEntity[] = [];
-    const counts: string[] = [];
-    settled.forEach((s, i) => {
-      if (s.status === "rejected") {
-        warnings.push(`Qloo couldn't search ${types[i].replace("_", " ")}s this time`);
-        return;
-      }
-      const kept = s.value.filter(
-        (e) =>
-          !seen.has(e.id) &&
-          isEnglishOrUnknown(e) &&
-          !e.tags.some((t) => avoidPatterns.some((re) => re.test(t.name))),
+    const gather = async (refined: boolean) => {
+      const settled = await Promise.allSettled(
+        types.map((type) =>
+          deps.qloo.insights({
+            type,
+            entityIds: seedIds,
+            tagIds: refined ? tagIds : [],
+            excludeIds: seedIds,
+            take: 15,
+            minYear: refined ? minYear : undefined,
+            maxYear: refined ? maxYear : undefined,
+            explain: true,
+          }),
+        ),
       );
-      for (const e of kept) seen.add(e.id);
-      value.push(...kept);
-      counts.push(`${kept.length} ${types[i].replace("_", " ")}${kept.length === 1 ? "" : "s"}`);
-    });
-    if (value.length === 0) {
+      const failures = settled.filter((s) => s.status === "rejected");
+      if (failures.length === settled.length) {
+        const reason = (failures[0] as PromiseRejectedResult).reason;
+        throw reason instanceof Error ? reason : new Error(String(reason));
+      }
+      // Whole-word match so a short phrase like "war" doesn't also drop "software" or "award".
+      const avoidPatterns = (refined ? avoidTags : []).map(
+        (a) => new RegExp(`\\b${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"),
+      );
+      const seen = new Set(seedIds);
+      const value: QlooEntity[] = [];
+      const counts: string[] = [];
+      const failed: string[] = [];
+      settled.forEach((s, i) => {
+        if (s.status === "rejected") {
+          failed.push(`Qloo couldn't search ${types[i].replace("_", " ")}s this time`);
+          return;
+        }
+        const kept = s.value.filter(
+          (e) =>
+            !seen.has(e.id) &&
+            isEnglishOrUnknown(e) &&
+            !e.tags.some((t) => avoidPatterns.some((re) => re.test(t.name))),
+        );
+        for (const e of kept) seen.add(e.id);
+        value.push(...kept);
+        counts.push(`${kept.length} ${types[i].replace("_", " ")}${kept.length === 1 ? "" : "s"}`);
+      });
+      return { value, counts, failed };
+    };
+    const refining = tagIds.length > 0 || avoidTags.length > 0 || minYear !== undefined || maxYear !== undefined;
+    let found = await gather(true);
+    let note = "";
+    if (found.value.length === 0 && refining) {
+      // The refinement filtered everything out; an unrefined plan beats no plan.
+      found = await gather(false);
+      warnings.push("Nothing matched your refinement, so these are the unrefined picks");
+      note = " (refinement matched nothing; unrefined)";
+    }
+    warnings.push(...found.failed);
+    if (found.value.length === 0) {
       throw new StepFailure("Qloo didn't return any English works for these favourites. Try adding another title.");
     }
-    return { value, detail: `Found ${counts.join(", ")}` };
+    return { value: found.value, detail: `Found ${found.counts.join(", ")}${note}` };
   });
 
   // 5. level

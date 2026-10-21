@@ -49,6 +49,8 @@ type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 const REQUEST_TIMEOUT_MS = 10_000;
+// Unfiltered tag queries also return style, audience and place tags; ask Qloo for media tags only.
+const MEDIA_TAG_TYPES = "urn:tag:genre:media,urn:tag:keyword:media";
 
 // ---- defensive parsing helpers ----
 
@@ -255,7 +257,12 @@ export class HttpQlooClient implements QlooClient {
 
   async entityTags(entityIds: string[], take = 20): Promise<QlooTag[]> {
     const body = rec(
-      await this.get("/v2/insights", { "filter.type": "urn:tag", "signal.interests.entities": entityIds, take }),
+      await this.get("/v2/insights", {
+        "filter.type": "urn:tag",
+        "signal.interests.entities": entityIds,
+        "filter.tag.types": MEDIA_TAG_TYPES,
+        take,
+      }),
     );
     const raw = rec(body?.results)?.tags;
     return (Array.isArray(raw) ? raw : []).map((t) => parseTag(t)).filter((t): t is QlooTag => !!t);
@@ -263,7 +270,12 @@ export class HttpQlooClient implements QlooClient {
 
   async searchTags(query: string, take = 10): Promise<QlooTag[]> {
     const body = rec(
-      await this.get("/v2/tags", { "filter.query": query, "feature.semantic_search": true, take }),
+      await this.get("/v2/tags", {
+        "filter.query": query,
+        "feature.semantic_search": true,
+        "filter.tag.types": MEDIA_TAG_TYPES,
+        take,
+      }),
     );
     const raw = rec(body?.results)?.tags;
     return (Array.isArray(raw) ? raw : []).map((t) => parseTag(t)).filter((t): t is QlooTag => !!t);

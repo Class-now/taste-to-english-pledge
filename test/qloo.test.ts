@@ -194,6 +194,7 @@ describe("HttpQlooClient", () => {
     expect(p.get("filter.type")).toBe("urn:tag");
     expect(p.get("signal.interests.entities")).toBe("S1,S2");
     expect(p.get("take")).toBe("20");
+    expect(p.get("filter.tag.types")).toBe("urn:tag:genre:media,urn:tag:keyword:media");
     expect(tags).toEqual([
       { id: "urn:tag:keyword:media:coming_of_age", name: "Coming Of Age", subtype: "urn:tag:keyword:media", affinity: 0.99 },
       { id: "urn:tag:genre:media:mystery", name: "Mystery", subtype: "urn:tag:genre:media" },
@@ -205,6 +206,7 @@ describe("HttpQlooClient", () => {
     expect(q.get("filter.query")).toBe("mystery");
     expect(q.get("feature.semantic_search")).toBe("true");
     expect(q.get("take")).toBe("3");
+    expect(q.get("filter.tag.types")).toBe("urn:tag:genre:media,urn:tag:keyword:media");
   });
 
   it("throws QlooError with nested or flat error messages", async () => {

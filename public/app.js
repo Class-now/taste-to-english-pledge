@@ -417,7 +417,8 @@ async function run(input) {
   lastRequest = input;
   hideFormError();
   els.errorBox.hidden = true;
-  els.results.hidden = true;
+  // A refine run keeps the current plan (and the refine box) on screen in case it fails.
+  if (!input.refine) els.results.hidden = true;
   els.submit.disabled = true;
   els.submit.textContent = "Building…";
   startProgress();

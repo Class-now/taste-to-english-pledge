@@ -99,6 +99,51 @@ describe("runPlan", () => {
     }
   });
 
+  it("swaps a reversed refine year range", async () => {
+    const qloo = new SpyQloo();
+    const llm = new FakeLlm({ refine: () => ({ addTags: [], avoidTags: [], minYear: 2010, maxYear: 2000 }) });
+    await runPlan({ ...base, refine: "2000s" }, { qloo, llm, mode: "mock" });
+    expect(qloo.insightCalls[0]).toMatchObject({ minYear: 2000, maxYear: 2010 });
+  });
+
+  it("continues with unrefined picks when the refine step fails", async () => {
+    const qloo = new SpyQloo();
+    const llm = new FakeLlm({
+      refine: () => {
+        throw new Error("model down");
+      },
+    });
+    const r = await runPlan({ ...base, refine: "more mystery" }, { qloo, llm, mode: "mock" });
+    expect(r.trace.find((t) => t.id === "refine")!.detail).toMatch(/^Failed/);
+    expect(r.warnings).toContain("Couldn't apply your refinement this time, so these are the unrefined picks");
+    expect(r.picks.length).toBeGreaterThan(0);
+    for (const c of qloo.insightCalls) expect(c.tagIds).toEqual([]);
+  });
+
+  it("falls back to unrefined candidates when the refinement filters out everything", async () => {
+    const qloo = new SpyQloo();
+    const llm = new FakeLlm({ refine: () => ({ addTags: [], avoidTags: [], minYear: 2099 }) });
+    const r = await runPlan({ ...base, refine: "only future works" }, { qloo, llm, mode: "mock" });
+    expect(r.warnings).toContain("Nothing matched your refinement, so these are the unrefined picks");
+    expect(r.picks.length).toBeGreaterThan(0);
+    expect(qloo.insightCalls.some((c) => c.minYear === undefined)).toBe(true);
+  });
+
+  it("realigns normalize rows numbered from 1", async () => {
+    const llm = new FakeLlm({
+      normalize: () => ({
+        items: [
+          { index: 1, query: "Spirited Away", typeGuess: "movie" },
+          { index: 2, query: "Persona 5", typeGuess: "videogame" },
+          { index: 3, query: "Norwegian Wood", typeGuess: "book" },
+        ],
+      }),
+    });
+    const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });
+    expect(r.trace[0].detail).toContain('"ペルソナ5" → "Persona 5"');
+    expect(r.trace[0].detail).toContain('"ノルウェイの森" → "Norwegian Wood"');
+  });
+
   it("raises AgentError at resolve when nothing is found", async () => {
     const input: PlanInput = { ...base, favorites: [{ title: "zzqx unknown work" }] };
     const err = await runPlan(input, { qloo: new MockQlooClient(), llm: new FakeLlm(), mode: "mock" }).catch((e) => e);

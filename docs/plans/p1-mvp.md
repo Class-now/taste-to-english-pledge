@@ -96,8 +96,8 @@ Do NOT implement: new API fields, accounts, persistence, analytics, service work
 
 **Design Context**: `README.md` in English with sections: title + one-line pitch + live demo URL placeholder `https://taste-to-english.<subdomain>.workers.dev` (leave a clear TODO marker `DEMO_URL`); The problem (extensive reading/listening for Japanese learners, motivation gap); What it does (user flow); Why Qloo is essential (cross-domain taste graph: a Japanese game → an English podcast; remove Qloo and picks become generic); How Qloo is used (table: endpoint → purpose → params, for `/search`, `/v2/insights` with `filter.type=urn:tag`, `/v2/insights` per media type with `signal.interests.entities` and `feature.explainability`, `/v2/tags` for refine); Example request → result walkthrough with the API key redacted (`X-Api-Key: ***`) using mock-mode output shape, explaining how entities and tags were chosen; Architecture (Worker + Workers AI + Cache API, mermaid diagram); Responsible data handling (only public titles sent to Qloo, no accounts, no storage, server-side key, Qloo results are aggregate patterns, CEFR is an estimate, no Qloo data in the repo); Run it yourself (Node 22+, `npm install`, `npx wrangler dev` runs in mock mode without any key, `npx wrangler secret put QLOO_API_KEY` for live mode, `npm test`); Limits; License (MIT, see LICENSE). Also add `.dev.vars.example` with `QLOO_API_KEY=` (empty).
 
-- [ ] `README.md` covers all sections above
-- [ ] `.dev.vars.example` exists and contains no real value
-- [ ] All validation commands pass
+- [x] `README.md` covers all sections above
+- [x] `.dev.vars.example` exists and contains no real value
+- [x] All validation commands pass
 
 Do NOT implement: code changes beyond fixing doc-related typos.

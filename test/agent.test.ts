@@ -129,6 +129,20 @@ describe("runPlan", () => {
     expect(qloo.insightCalls.some((c) => c.minYear === undefined)).toBe(true);
   });
 
+  it("falls back to unrefined candidates when Qloo rejects every refined query", async () => {
+    const qloo = new (class extends SpyQloo {
+      override async insights(p: InsightsParams) {
+        if (p.tagIds?.length) throw new Error("400 bad tag");
+        return super.insights(p);
+      }
+    })();
+    const llm = new FakeLlm({ refine: () => ({ addTags: ["mystery"], avoidTags: [] }) });
+    const r = await runPlan({ ...base, refine: "more mystery" }, { qloo, llm, mode: "mock" });
+    expect(r.warnings).toContain("Couldn't apply your refinement this time, so these are the unrefined picks");
+    expect(r.trace.find((t) => t.id === "recommend")!.detail).toContain("refinement failed");
+    expect(r.picks.length).toBeGreaterThan(0);
+  });
+
   it("realigns normalize rows numbered from 1", async () => {
     const llm = new FakeLlm({
       normalize: () => ({

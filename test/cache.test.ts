@@ -16,7 +16,7 @@ describe("CachedQlooClient", () => {
   it("serves repeat calls from the cache with a 24h TTL", async () => {
     const cache = new MemoryCache();
     const inner = new CountingQloo();
-    const c = new CachedQlooClient(inner, cache as unknown as Cache, "live");
+    const c = new CachedQlooClient(inner, cache as unknown as Cache, "live", undefined, new Map());
     const a = await c.search("Spirited Away", ["movie"], 5);
     const b = await c.search("Spirited Away", ["movie"], 5);
     expect(b).toEqual(a);
@@ -35,18 +35,18 @@ describe("CachedQlooClient", () => {
         throw new Error("boom");
       }
     })();
-    const c = new CachedQlooClient(failing, cache as unknown as Cache);
+    const c = new CachedQlooClient(failing, cache as unknown as Cache, "v1", undefined, new Map());
     await expect(c.searchTags("mystery")).rejects.toThrow("boom");
     await expect(c.searchTags("mystery")).rejects.toThrow("boom");
     expect(n).toBe(2);
     expect(cache.store.size).toBe(0);
-    expect(await new CachedQlooClient(new MockQlooClient(), undefined).searchTags("myst")).not.toHaveLength(0);
+    expect(await new CachedQlooClient(new MockQlooClient(), undefined, "v1", undefined, new Map()).searchTags("myst")).not.toHaveLength(0);
   });
 
   it("does not cache empty results", async () => {
     const cache = new MemoryCache();
     const inner = new CountingQloo();
-    const c = new CachedQlooClient(inner, cache as unknown as Cache, "v1-live");
+    const c = new CachedQlooClient(inner, cache as unknown as Cache, "v1-live", undefined, new Map());
     expect(await c.search("zzqx unknown work")).toEqual([]);
     expect(await c.search("zzqx unknown work")).toEqual([]);
     expect(inner.calls).toBe(2);
@@ -63,9 +63,24 @@ describe("CachedQlooClient", () => {
       },
     } as unknown as Cache;
     const inner = new CountingQloo();
-    const res = await new CachedQlooClient(inner, broken, "v1-live").search("Spirited Away", ["movie"], 5);
+    const res = await new CachedQlooClient(inner, broken, "v1-live", undefined, new Map()).search("Spirited Away", ["movie"], 5);
     expect(res[0].name).toBe("Spirited Away");
     expect(inner.calls).toBe(1);
+  });
+
+  it("serves repeats from the isolate memory when the Cache API stores nothing (workers.dev), until the TTL", async () => {
+    const noop = { match: async () => undefined, put: async () => {} } as unknown as Cache;
+    const inner = new CountingQloo();
+    let t = 1_000;
+    const c = new CachedQlooClient(inner, noop, "v1-live", 60, new Map(), () => t);
+    const a = await c.search("Spirited Away", ["movie"], 5);
+    a[0].name = "mutated by caller";
+    const b = await c.search("Spirited Away", ["movie"], 5);
+    expect(inner.calls).toBe(1);
+    expect(b[0].name).toBe("Spirited Away");
+    t += 61_000;
+    await c.search("Spirited Away", ["movie"], 5);
+    expect(inner.calls).toBe(2);
   });
 });
 

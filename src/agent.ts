@@ -272,14 +272,26 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       return { value, counts, failed };
     };
     const refining = tagIds.length > 0 || avoidTags.length > 0 || minYear !== undefined || maxYear !== undefined;
-    let found = await gather(true);
+    // When refining, a rejected refined query falls back like an empty one: an unrefined plan beats no plan.
+    let found = refining
+      ? await gather(true).catch((err) => {
+          console.error("refined recommend failed:", err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+          return null;
+        })
+      : await gather(false);
     let note = "";
-    if (found.value.length === 0 && refining) {
-      // The refinement filtered everything out; an unrefined plan beats no plan.
+    if (refining && (!found || found.value.length === 0)) {
+      const rejected = !found;
       found = await gather(false);
-      warnings.push("Nothing matched your refinement, so these are the unrefined picks");
-      note = " (refinement matched nothing; unrefined)";
+      if (rejected) {
+        warnings.push("Couldn't apply your refinement this time, so these are the unrefined picks");
+        note = " (refinement failed; unrefined)";
+      } else {
+        warnings.push("Nothing matched your refinement, so these are the unrefined picks");
+        note = " (refinement matched nothing; unrefined)";
+      }
     }
+    if (!found) throw new Error("unreachable: recommend has no result");
     warnings.push(...found.failed);
     if (found.value.length === 0) {
       throw new StepFailure("Qloo didn't return any English works for these favourites. Try adding another title.");

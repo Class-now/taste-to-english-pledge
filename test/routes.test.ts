@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 import type { LlmJsonOptions } from "../src/llm";
 import { FakeLlm } from "./fake-llm";
+import { resetMemoryCache } from "../src/cache";
 import { resetRateLimits } from "../src/ratelimit";
 import { installMemoryCaches, type MemoryCache } from "./memory-cache";
 
@@ -50,6 +51,7 @@ let cache: MemoryCache;
 beforeEach(() => {
   cache = installMemoryCaches();
   resetRateLimits();
+  resetMemoryCache();
 });
 afterEach(() => {
   delete (globalThis as { caches?: unknown }).caches;

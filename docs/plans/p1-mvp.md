@@ -19,10 +19,10 @@ Context for every task: this repo is a Cloudflare Worker (TypeScript, `src/index
   - `createQlooClient(env)` returns `HttpQlooClient` iff `env.QLOO_API_KEY` is a non-empty string, else `MockQlooClient`; also export `qlooMode(env): "live"|"mock"`.
 - Tests in `test/`: validation cases; HTTP client builds correct URLs/headers (inject fake fetch, assert URL and `X-Api-Key`), parses search/insights/tags sample payloads (inline JSON in the test matching the shapes in `docs/qloo-api-notes.md`), error parsing, videogame 403 fallback; mock client returns deterministic ranked results and resolves Japanese aliases.
 
-- [ ] `src/types.ts`, `src/validate.ts`, `src/qloo.ts`, `src/mock-qloo.ts`, `src/mock-data.ts` exist with the interfaces above
-- [ ] HttpQlooClient unit tests pass using a fake fetch (URL params, header, parsing, error, 403 fallback)
-- [ ] MockQlooClient unit tests pass (alias resolution, ranking excludes seeds, deterministic)
-- [ ] `npx tsc --noEmit` passes
+- [x] `src/types.ts`, `src/validate.ts`, `src/qloo.ts`, `src/mock-qloo.ts`, `src/mock-data.ts` exist with the interfaces above
+- [x] HttpQlooClient unit tests pass using a fake fetch (URL params, header, parsing, error, 403 fallback)
+- [x] MockQlooClient unit tests pass (alias resolution, ranking excludes seeds, deterministic)
+- [x] `npx tsc --noEmit` passes
 
 Do NOT implement: the agent pipeline, LLM calls, HTTP routes, frontend.
 

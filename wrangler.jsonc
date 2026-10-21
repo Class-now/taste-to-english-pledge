@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "taste-to-english",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  "ai": { "binding": "AI" },
+  "vars": { "QLOO_BASE_URL": "https://hackathon.api.qloo.com" }
+  // QLOO_API_KEY is a secret, never a var:
+  //   npx wrangler secret put QLOO_API_KEY
+  // Without it the app runs in mock mode (clearly labelled in the UI).
+}

@@ -43,11 +43,11 @@ Do NOT implement: the agent pipeline, LLM calls, HTTP routes, frontend.
 - Prompts must say: output English except `ja` gloss (Japanese); be honest that CEFR is an estimate; never claim facts about a title beyond the given description.
 - Tests: `test/agent.test.ts` runs the full pipeline with `MockQlooClient` and a `FakeLlm` (returns canned JSON per prompt kind by inspecting a `kind` tag you include in the system prompt); asserts trace step ids in order, 6–9 picks, `because` populated, 7 days, 12 vocab, refine adds tagIds, zero-resolved raises AgentError("resolve"). Unit tests for `selectPicks` and `explain`.
 
-- [ ] `src/llm.ts`, `src/prompts.ts`, `src/agent.ts`, `src/select.ts`, `src/explain.ts` implemented as above
-- [ ] Agent pipeline test with MockQlooClient + FakeLlm passes (trace order, pick count, because, plan, vocab)
-- [ ] Refine path and zero-resolved error path covered by passing tests
-- [ ] `selectPicks` and `explain` unit tests pass
-- [ ] `npx tsc --noEmit` passes
+- [x] `src/llm.ts`, `src/prompts.ts`, `src/agent.ts`, `src/select.ts`, `src/explain.ts` implemented as above
+- [x] Agent pipeline test with MockQlooClient + FakeLlm passes (trace order, pick count, because, plan, vocab)
+- [x] Refine path and zero-resolved error path covered by passing tests
+- [x] `selectPicks` and `explain` unit tests pass
+- [x] `npx tsc --noEmit` passes
 
 Do NOT implement: HTTP routes, frontend, caching, rate limiting.
 

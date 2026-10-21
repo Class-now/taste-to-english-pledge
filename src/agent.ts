@@ -1,0 +1,333 @@
+import { explainPick } from "./explain";
+import type { Llm } from "./llm";
+import { normalizeTitle } from "./mock-qloo";
+import { levelPrompt, normalizePrompt, planPrompt, refinePrompt, type LevelCandidate } from "./prompts";
+import type { QlooClient } from "./qloo";
+import { FORMAT_TYPES, MIN_PICKS, selectPicks, type LevelEstimate } from "./select";
+import {
+  CEFR_LEVELS,
+  ENTITY_TYPES,
+  type Cefr,
+  type Day,
+  type EntityType,
+  type Format,
+  type Pick,
+  type PlanInput,
+  type PlanResult,
+  type QlooEntity,
+  type QlooTag,
+  type TraceStep,
+  type Vocab,
+} from "./types";
+
+export interface AgentDeps {
+  qloo: QlooClient;
+  llm: Llm;
+  mode: "live" | "mock";
+  now?: () => number;
+}
+
+export class AgentError extends Error {
+  constructor(
+    public readonly step: string,
+    message: string,
+    public readonly trace: TraceStep[],
+  ) {
+    super(message);
+    this.name = "AgentError";
+  }
+}
+
+const PROFILE_SIZE = 8;
+const MAX_LEVEL_CANDIDATES = 40;
+const ENGLISH = new Set(["en", "eng", "english"]);
+
+const STEP_LABELS: Record<string, string> = {
+  normalize: "Understanding your favourites",
+  resolve: "Finding them in Qloo",
+  profile: "Reading your taste profile",
+  refine: "Applying your refinement",
+  recommend: "Searching English works with Qloo",
+  level: "Estimating English level",
+  explain: "Explaining each match",
+  plan: "Writing your 7-day plan",
+};
+
+const FAILURE_MESSAGES: Record<string, string> = {
+  normalize: "The AI couldn't read your favourites. Please try again.",
+  resolve: "Qloo search failed. Please try again.",
+  profile: "Qloo couldn't build your taste profile. Please try again.",
+  refine: "We couldn't apply your refinement. Try different wording.",
+  recommend: "Qloo couldn't find recommendations. Please try again.",
+  level: "The AI couldn't estimate English levels. Please try again.",
+  explain: "We couldn't explain the matches. Please try again.",
+  plan: "The AI couldn't write your plan. Please try again.",
+};
+
+/** Thrown inside a step to fail it with a specific user-facing message. */
+class StepFailure extends Error {}
+
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const isString = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const record = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+
+function toEntityType(v: unknown): EntityType | undefined {
+  if (v === "video_game") return "videogame";
+  return ENTITY_TYPES.includes(v as EntityType) ? (v as EntityType) : undefined;
+}
+
+function describe(e: QlooEntity): string {
+  return `${e.name} (${e.type.replace("_", " ")}${e.year ? `, ${e.year}` : ""})`;
+}
+
+function isEnglishOrUnknown(e: QlooEntity): boolean {
+  return !e.language || ENGLISH.has(e.language.trim().toLowerCase());
+}
+
+function fallbackActivity(p: Pick, minutes: number): string {
+  if (p.format === "read") return `Read about ${Math.max(2, Math.round(minutes / 3))} pages of "${p.name}"`;
+  if (p.format === "listen") return `Listen to one episode of "${p.name}"`;
+  return `Watch part of "${p.name}" with English subtitles`;
+}
+
+export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanResult> {
+  const now = deps.now ?? (() => Date.now());
+  const trace: TraceStep[] = [];
+  const warnings: string[] = [];
+
+  async function step<T>(id: string, fn: () => Promise<{ value: T; detail: string }>): Promise<T> {
+    const start = now();
+    const label = STEP_LABELS[id] ?? id;
+    try {
+      const { value, detail } = await fn();
+      trace.push({ id, label, detail, ms: Math.round(now() - start) });
+      return value;
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      trace.push({ id, label, detail: `Failed: ${reason}`, ms: Math.round(now() - start) });
+      throw new AgentError(id, err instanceof StepFailure ? reason : FAILURE_MESSAGES[id], trace);
+    }
+  }
+
+  // 1. normalize
+  const normalized = await step("normalize", async () => {
+    const items = input.favorites.map((f, index) => ({ index, title: f.title, ...(f.type ? { type: f.type } : {}) }));
+    const out = await deps.llm.json<{ items?: unknown }>(normalizePrompt(items));
+    const rows = asArray(record(out).items);
+    const value = input.favorites.map((f, i) => {
+      const row = record(rows[i]);
+      return {
+        title: f.title,
+        query: isString(row.query) ? row.query.trim() : f.title,
+        type: f.type ?? toEntityType(row.typeGuess),
+      };
+    });
+    return {
+      value,
+      detail: value.map((v) => `"${v.title}" → "${v.query}"${v.type ? ` (${v.type.replace("_", " ")})` : ""}`).join("; "),
+    };
+  });
+
+  // 2. resolve
+  const seeds = await step("resolve", async () => {
+    const found: QlooEntity[] = [];
+    const lines: string[] = [];
+    for (const n of normalized) {
+      const names = new Set([normalizeTitle(n.query), normalizeTitle(n.title)]);
+      const choose = (results: QlooEntity[]) => results.find((r) => names.has(normalizeTitle(r.name))) ?? results[0];
+      let hit = n.type ? choose(await deps.qloo.search(n.query, [n.type], 5)) : undefined;
+      if (!hit) hit = choose(await deps.qloo.search(n.query, undefined, 5));
+      if (!hit && n.query !== n.title) hit = choose(await deps.qloo.search(n.title, undefined, 5));
+      if (!hit) {
+        warnings.push(`Couldn't find "${n.title}"`);
+        lines.push(`"${n.title}" → not found`);
+      } else if (!found.some((e) => e.id === hit.id)) {
+        found.push(hit);
+        lines.push(`"${n.title}" → ${describe(hit)}`);
+      }
+    }
+    if (found.length === 0) {
+      throw new StepFailure("We couldn't find any of these titles. Try the official English or Japanese title.");
+    }
+    return { value: found, detail: lines.join("; ") };
+  });
+  const seedIds = seeds.map((s) => s.id);
+
+  // 3. profile
+  const profile = await step("profile", async () => {
+    const tags = await deps.qloo.entityTags(seedIds, 20);
+    const value = [...tags].sort((a, b) => (b.affinity ?? 0) - (a.affinity ?? 0)).slice(0, PROFILE_SIZE);
+    return { value, detail: value.length ? value.map((t) => t.name).join(", ") : "No taste tags returned" };
+  });
+
+  // 3b. refine (optional)
+  let tagIds: string[] = [];
+  let avoidTags: string[] = [];
+  let minYear: number | undefined;
+  let maxYear: number | undefined;
+  if (input.refine) {
+    const refineText = input.refine;
+    await step("refine", async () => {
+      const out = record(await deps.llm.json<unknown>(refinePrompt(refineText)));
+      const add = asArray(out.addTags).filter(isString).map((t) => t.trim()).slice(0, 3);
+      avoidTags = asArray(out.avoidTags).filter(isString).map((t) => t.trim().toLowerCase()).slice(0, 3);
+      const year = (v: unknown) => (Number.isInteger(v) && (v as number) >= 1800 && (v as number) <= 2100 ? (v as number) : undefined);
+      minYear = year(out.minYear);
+      maxYear = year(out.maxYear);
+      const resolved: QlooTag[] = [];
+      for (const q of add) {
+        const [hit] = await deps.qloo.searchTags(q, 3);
+        if (hit && !resolved.some((t) => t.id === hit.id)) resolved.push(hit);
+      }
+      tagIds = resolved.map((t) => t.id);
+      const parts = [
+        `more: ${add.length ? add.map((a) => `"${a}"`).join(", ") : "—"}${resolved.length ? ` → Qloo tags ${resolved.map((t) => t.name).join(", ")}` : ""}`,
+        `less: ${avoidTags.length ? avoidTags.map((a) => `"${a}"`).join(", ") : "—"}`,
+      ];
+      if (minYear || maxYear) parts.push(`years: ${minYear ?? "any"}–${maxYear ?? "any"}`);
+      return { value: undefined, detail: parts.join("; ") };
+    });
+  }
+
+  // 4. recommend
+  const candidates = await step("recommend", async () => {
+    const types = [...new Set(input.formats.flatMap((f: Format) => FORMAT_TYPES[f]))];
+    const settled = await Promise.allSettled(
+      types.map((type) =>
+        deps.qloo.insights({
+          type,
+          entityIds: seedIds,
+          tagIds,
+          excludeIds: seedIds,
+          take: 15,
+          minYear,
+          maxYear,
+          explain: true,
+        }),
+      ),
+    );
+    const failures = settled.filter((s) => s.status === "rejected");
+    if (failures.length === settled.length) {
+      const reason = (failures[0] as PromiseRejectedResult).reason;
+      throw reason instanceof Error ? reason : new Error(String(reason));
+    }
+    const seen = new Set(seedIds);
+    const value: QlooEntity[] = [];
+    const counts: string[] = [];
+    settled.forEach((s, i) => {
+      if (s.status === "rejected") {
+        warnings.push(`Qloo couldn't search ${types[i].replace("_", " ")}s this time`);
+        return;
+      }
+      const kept = s.value.filter(
+        (e) =>
+          !seen.has(e.id) &&
+          isEnglishOrUnknown(e) &&
+          !e.tags.some((t) => avoidTags.some((a) => t.name.toLowerCase().includes(a))),
+      );
+      for (const e of kept) seen.add(e.id);
+      value.push(...kept);
+      counts.push(`${kept.length} ${types[i].replace("_", " ")}${kept.length === 1 ? "" : "s"}`);
+    });
+    if (value.length === 0) {
+      throw new StepFailure("Qloo didn't return any English works for these favourites. Try adding another title.");
+    }
+    return { value, detail: `Found ${counts.join(", ")}` };
+  });
+
+  // 5. level
+  const picks = await step("level", async () => {
+    // Interleave types so the 40-candidate cap keeps every format represented.
+    const queues = new Map<EntityType, QlooEntity[]>();
+    for (const c of candidates) queues.set(c.type, [...(queues.get(c.type) ?? []), c]);
+    const capped: QlooEntity[] = [];
+    while (capped.length < MAX_LEVEL_CANDIDATES && [...queues.values()].some((q) => q.length)) {
+      for (const q of queues.values()) {
+        const next = q.shift();
+        if (next && capped.length < MAX_LEVEL_CANDIDATES) capped.push(next);
+      }
+    }
+    const payload: LevelCandidate[] = capped.map((c) => ({
+      id: c.id,
+      title: c.name,
+      type: c.type,
+      ...(c.year ? { year: c.year } : {}),
+      ...(c.description ? { description: clip(c.description, 200) } : {}),
+      ...(c.pageCount ? { pageCount: c.pageCount } : {}),
+    }));
+    const out = await deps.llm.json<unknown>(levelPrompt(input.level, payload));
+    const ids = new Set(capped.map((c) => c.id));
+    const levels: LevelEstimate[] = [];
+    for (const raw of asArray(record(out).items)) {
+      const r = record(raw);
+      if (isString(r.id) && ids.has(r.id) && CEFR_LEVELS.includes(r.cefr as Cefr)) {
+        levels.push({ id: r.id, cefr: r.cefr as Cefr, reason: clip(isString(r.reason) ? r.reason.trim() : "", 120) });
+      }
+    }
+    const value = selectPicks(capped, levels, input.level, input.formats);
+    if (value.length === 0) {
+      throw new StepFailure("None of the matches fit your English level. Try a different level or more favourites.");
+    }
+    if (value.length < MIN_PICKS) warnings.push(`Only ${value.length} works matched your level closely`);
+    const fits = (f: string) => value.filter((p) => p.fit === f).length;
+    return {
+      value,
+      detail: `Rated ${levels.length} of ${capped.length} works; picked ${value.length} (${fits("match")} at your level, ${fits("stretch")} stretch, ${fits("easier")} easier)`,
+    };
+  });
+
+  // 6. explain
+  await step("explain", async () => {
+    for (const p of picks) p.because = explainPick(p, seeds);
+    return { value: undefined, detail: picks.map((p) => `${p.name}: ${p.because}`).join("; ") };
+  });
+
+  // 7. plan + vocab
+  const { plan, vocab } = await step("plan", async () => {
+    const out = record(
+      await deps.llm.json<unknown>(
+        planPrompt({
+          learnerLevel: input.level,
+          minutesPerDay: input.minutesPerDay,
+          picks: picks.map((p) => ({
+            id: p.id,
+            title: p.name,
+            type: p.type,
+            format: p.format,
+            cefr: p.cefr,
+            ...(p.pageCount ? { pageCount: p.pageCount } : {}),
+            ...(p.description ? { description: clip(p.description, 200) } : {}),
+          })),
+        }),
+      ),
+    );
+    const pickIds = new Set(picks.map((p) => p.id));
+    const byDay = new Map<number, Day>();
+    for (const raw of asArray(out.days)) {
+      const d = record(raw);
+      const day = d.day as number;
+      if (!Number.isInteger(day) || day < 1 || day > 7 || byDay.has(day)) continue;
+      if (!isString(d.pickId) || !pickIds.has(d.pickId) || !isString(d.activity)) continue;
+      byDay.set(day, { day, pickId: d.pickId, activity: clip(d.activity.trim(), 200), minutes: input.minutesPerDay });
+    }
+    const dropped = 7 - byDay.size;
+    for (let day = 1; day <= 7; day++) {
+      if (byDay.has(day)) continue;
+      const p = picks[(day - 1) % picks.length];
+      byDay.set(day, { day, pickId: p.id, activity: fallbackActivity(p, input.minutesPerDay), minutes: input.minutesPerDay });
+    }
+    const vocab: Vocab[] = [];
+    for (const raw of asArray(out.vocab)) {
+      const v = record(raw);
+      if (isString(v.term) && isString(v.ja) && isString(v.example) && vocab.length < 12) {
+        vocab.push({ term: clip(v.term.trim(), 60), ja: clip(v.ja.trim(), 60), example: clip(v.example.trim(), 200) });
+      }
+    }
+    const value = { plan: [...byDay.values()].sort((a, b) => a.day - b.day), vocab };
+    const detail = `7 days of ${input.minutesPerDay} min, ${vocab.length} starter words${dropped ? ` (${dropped} day${dropped === 1 ? "" : "s"} filled in automatically)` : ""}`;
+    return { value, detail };
+  });
+
+  return { mode: deps.mode, profile, picks, plan, vocab, trace, warnings };
+}

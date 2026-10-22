@@ -2,7 +2,7 @@
 
 **Turn the Japanese anime, games and novels you love into an English reading, listening and watching plan at your level, built on Qloo's cross-domain taste graph.**
 
-Live demo: `https://taste-to-english.<subdomain>.workers.dev` <!-- TODO DEMO_URL: replace with the deployed URL -->
+Live demo: https://taste-to-english.shotaro-takakura.workers.dev (sample data until the Qloo hackathon key is connected; add `?demo=1` to force sample mode)
 
 Built for the Qloo Agentic Hackathon. No key handy? Open the demo with `?demo=1` to run it on a small hand-written sample set (clearly labelled).
 

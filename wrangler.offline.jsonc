@@ -1,0 +1,13 @@
+{
+  // Offline demo config: same Worker and assets, but no Workers AI binding, so it runs without a
+  // Cloudflare account or login. The agent's rule-based fallback answers the AI steps and the UI
+  // marks them as such. Local demos and screenshots only:
+  //   npx wrangler dev -c wrangler.offline.jsonc --port 8799
+  // Deploy with the main wrangler.jsonc.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "taste-to-english",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  "vars": { "QLOO_BASE_URL": "https://hackathon.api.qloo.com" }
+}

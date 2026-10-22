@@ -1,11 +1,31 @@
 {
   "project": "qloo-reading-planner (Taste-to-English)",
-  "updated": "2026-10-21T16:40+09:00",
+  "updated": "2026-10-21",
   "deadline": "2026-10-31T12:45+09:00 (submit by 10/30)",
   "canonical_status": "/Users/classnow/Desktop/contest-pm/contests/1031-qloo/status.md",
   "design": "docs/design.md",
-  "phase": "P1 MVP build (mock Qloo until key arrives)",
-  "done": ["repo init, package.json/wrangler.jsonc/tsconfig/LICENSE(MIT), deps installed", "docs/design.md"],
-  "next": ["docs/qloo-api-notes.md (research subagent)", "ralphex plan docs/plans/p1-mvp.md", "run ralphex, verify, merge", "create public GitHub repo + deploy to Workers"],
-  "blocked_on_human": ["Devpost account creation", "OK to submit Qloo API key form"]
+  "phase": "P1 MVP built on branch p1-mvp; ralphex code review in progress",
+  "done": [
+    "repo init, package.json/wrangler.jsonc/tsconfig/LICENSE(MIT), deps installed",
+    "docs/design.md",
+    "docs/qloo-api-notes.md",
+    "ralphex plan docs/plans/p1-mvp.md",
+    "ralphex Tasks 1-5 (Qloo client+mock, agent, routes, frontend, README) on p1-mvp",
+    "review round 1 fixes: LLM array-length schemas + level re-ask (1-pick bug), no raw errors to client, Qloo timeout, cache namespace",
+    "review pass 2 fixes: level step in batches of 20 (failed batch keeps others), exact-name seed match before guessed-type top hit, en-* language prefix, explainability keys+top score, profile-tag because tier, media-only refine tags, cancel Qloo retry body",
+    "review pass 3 fixes: per-isolate Map in rate limit (workers.dev Cache API is a no-op), media-only taste-profile tags"
+  ],
+  "next": [
+    "finish ralphex review loop, merge p1-mvp to main",
+    "create public GitHub repo + deploy to Workers",
+    "replace DEMO_URL in README",
+    "on deployed host: verify 21st plan/hour gets 429 (per-isolate Map now backs the Cache API counter)",
+    "live run with real Qloo key + Workers AI: confirm 6-9 picks and 12 vocab",
+    "check Workers AI plan (Free = 10k neurons/day, roughly 8-14 plans/day by estimate) before judging 2026-11-02; check whether Watch picks for anime seeds are mostly Japanese (filter.release_country is an option)",
+    "open (not fixed, judged minor): plan/profile step failure discards whole run; worst-case resolve retries could hit Free-plan 50-subrequest limit"
+  ],
+  "blocked_on_human": [
+    "Devpost account creation",
+    "OK to submit Qloo API key form"
+  ]
 }

@@ -27,7 +27,7 @@ An LLM alone guesses popular English titles and drifts toward generic bestseller
 - LLM: Cloudflare **Workers AI** binding `AI`, model `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, JSON output via `response_format: { type: "json_schema", json_schema }`. Wrapped in `src/llm.ts` behind an interface so tests use a fake.
 - Qloo: `src/qloo.ts` exports `interface QlooClient` with two implementations: `HttpQlooClient` (base URL `env.QLOO_BASE_URL` = `https://hackathon.api.qloo.com`, header `X-Api-Key: env.QLOO_API_KEY`) and `MockQlooClient` (fixtures in `src/mock-data.ts`, hand-written by us, not Qloo data). `createQlooClient(env)` returns the HTTP one iff `env.QLOO_API_KEY` is set. The API key is a Wrangler secret, never in the repo or the browser. Exact endpoint/param names: see `docs/qloo-api-notes.md`.
 - Caching: Qloo GET responses cached server-side with the Workers Cache API (`caches.default`, key = request URL without the key header, TTL 24h). Nothing from Qloo is committed to the repo.
-- Abuse/cost guard: per-IP limit of 20 plan requests / hour using an in-memory Map per isolate plus Cache API counter (best effort); input lengths capped (titles ≤ 80 chars, ≤ 5 favourites, refine text ≤ 200 chars).
+- Abuse/cost guard: per-IP limit of 30 plan requests / hour (IPv6 by /64; demo runs counted separately) using an in-memory Map per isolate plus Cache API counter (best effort); input lengths capped (titles ≤ 80 chars, ≤ 5 favourites, refine text ≤ 200 chars).
 - No database, no accounts, no personal data. Inputs are titles of public cultural works only. Nothing is sent to Qloo except entity names/ids and tags.
 
 ## 4. Agent pipeline (`src/agent.ts`)
@@ -42,6 +42,8 @@ An LLM alone guesses popular English titles and drifts toward generic bestseller
 6. **explain**: for each pick, compute "because you like X" deterministically from Qloo (which favourite's tags overlap the pick's tags, else the highest-affinity favourite). No LLM invention for this field.
 7. **plan + vocab** (LLM, one call): 7-day schedule using picks and minutes/day; 12 starter vocab items for day-1 item with Japanese gloss and example.
 8. **refine** (LLM): map refine text to `{ addTags: [...free text], removeTags: [...], filters: { maxYear?, minYear? } }`; resolve addTags via Qloo tag search; rerun steps 4–7 with the extra signals.
+
+P2 additions (see `docs/plans/p2-polish.md`): a **review** step between level fit and explain, where the agent checks coverage per format and widens the Qloo search once with taste-profile tags as an extra signal; every Qloo/LLM call is recorded per step and streamed to the page as NDJSON; a rule-based fallback answers AI calls that fail or come back unusable; `demo: true` forces the sample data.
 
 Failures: any Qloo/LLM step failure yields a user-facing error with which step failed; the trace is still returned.
 

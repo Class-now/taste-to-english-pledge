@@ -1,5 +1,7 @@
 # Plan: P1 MVP — Taste-to-English (Qloo Agentic Hackathon)
 
+Status: all tasks complete on branch `p1-mvp` (2026-10-21). Still open, outside this plan: deploy to Workers, replace the `DEMO_URL` placeholder in README, check the rate limit on the deployed host.
+
 Context for every task: this repo is a Cloudflare Worker (TypeScript, `src/index.ts`) with static assets in `public/` (Workers Assets, binding `ASSETS`, `run_worker_first: ["/api/*"]`), a Workers AI binding `AI`, and a var `QLOO_BASE_URL=https://hackathon.api.qloo.com`. `QLOO_API_KEY` is an optional secret: when absent the app runs in **mock mode**. Product and pipeline design: `docs/design.md` (read it first). Qloo API facts: `docs/qloo-api-notes.md` (read sections 0–3 before touching the Qloo client). Config already exists: `package.json` (scripts `test`, `type-check`, `dev`, `deploy`), `tsconfig.json` (strict), `wrangler.jsonc`, `LICENSE` (MIT). Do not change `wrangler.jsonc` bindings or the license. No new runtime dependencies (devDependencies only if essential). Never write a real API key anywhere; never commit Qloo response data (mock fixtures are hand-written by us and labelled as such).
 
 ## Validation Commands
@@ -19,10 +21,10 @@ Context for every task: this repo is a Cloudflare Worker (TypeScript, `src/index
   - `createQlooClient(env)` returns `HttpQlooClient` iff `env.QLOO_API_KEY` is a non-empty string, else `MockQlooClient`; also export `qlooMode(env): "live"|"mock"`.
 - Tests in `test/`: validation cases; HTTP client builds correct URLs/headers (inject fake fetch, assert URL and `X-Api-Key`), parses search/insights/tags sample payloads (inline JSON in the test matching the shapes in `docs/qloo-api-notes.md`), error parsing, videogame 403 fallback; mock client returns deterministic ranked results and resolves Japanese aliases.
 
-- [ ] `src/types.ts`, `src/validate.ts`, `src/qloo.ts`, `src/mock-qloo.ts`, `src/mock-data.ts` exist with the interfaces above
-- [ ] HttpQlooClient unit tests pass using a fake fetch (URL params, header, parsing, error, 403 fallback)
-- [ ] MockQlooClient unit tests pass (alias resolution, ranking excludes seeds, deterministic)
-- [ ] `npx tsc --noEmit` passes
+- [x] `src/types.ts`, `src/validate.ts`, `src/qloo.ts`, `src/mock-qloo.ts`, `src/mock-data.ts` exist with the interfaces above
+- [x] HttpQlooClient unit tests pass using a fake fetch (URL params, header, parsing, error, 403 fallback)
+- [x] MockQlooClient unit tests pass (alias resolution, ranking excludes seeds, deterministic)
+- [x] `npx tsc --noEmit` passes
 
 Do NOT implement: the agent pipeline, LLM calls, HTTP routes, frontend.
 
@@ -43,11 +45,11 @@ Do NOT implement: the agent pipeline, LLM calls, HTTP routes, frontend.
 - Prompts must say: output English except `ja` gloss (Japanese); be honest that CEFR is an estimate; never claim facts about a title beyond the given description.
 - Tests: `test/agent.test.ts` runs the full pipeline with `MockQlooClient` and a `FakeLlm` (returns canned JSON per prompt kind by inspecting a `kind` tag you include in the system prompt); asserts trace step ids in order, 6–9 picks, `because` populated, 7 days, 12 vocab, refine adds tagIds, zero-resolved raises AgentError("resolve"). Unit tests for `selectPicks` and `explain`.
 
-- [ ] `src/llm.ts`, `src/prompts.ts`, `src/agent.ts`, `src/select.ts`, `src/explain.ts` implemented as above
-- [ ] Agent pipeline test with MockQlooClient + FakeLlm passes (trace order, pick count, because, plan, vocab)
-- [ ] Refine path and zero-resolved error path covered by passing tests
-- [ ] `selectPicks` and `explain` unit tests pass
-- [ ] `npx tsc --noEmit` passes
+- [x] `src/llm.ts`, `src/prompts.ts`, `src/agent.ts`, `src/select.ts`, `src/explain.ts` implemented as above
+- [x] Agent pipeline test with MockQlooClient + FakeLlm passes (trace order, pick count, because, plan, vocab)
+- [x] Refine path and zero-resolved error path covered by passing tests
+- [x] `selectPicks` and `explain` unit tests pass
+- [x] `npx tsc --noEmit` passes
 
 Do NOT implement: HTTP routes, frontend, caching, rate limiting.
 
@@ -62,10 +64,10 @@ Do NOT implement: HTTP routes, frontend, caching, rate limiting.
 - Responses: `content-type: application/json; charset=utf-8`, `cache-control: no-store`.
 - Tests (`test/routes.test.ts`): call the default export's `fetch` with a fake env (fake AI returning canned JSON through `WorkersAiLlm`, no `QLOO_API_KEY` → mock mode, `caches` stubbed with an in-memory implementation on `globalThis`): health returns mock; valid plan returns 200 with picks; invalid body 400; 21st request in the hour 429; unknown api path 404.
 
-- [ ] `src/index.ts`, `src/cache.ts`, `src/ratelimit.ts` implemented as above
-- [ ] Route tests pass (health, 200 plan, 400, 429, 404)
-- [ ] `npx wrangler deploy --dry-run --outdir /tmp/ttE-dry` succeeds
-- [ ] `npx tsc --noEmit` passes
+- [x] `src/index.ts`, `src/cache.ts`, `src/ratelimit.ts` implemented as above
+- [x] Route tests pass (health, 200 plan, 400, 429, 404)
+- [x] `npx wrangler deploy --dry-run --outdir /tmp/ttE-dry` succeeds
+- [x] `npx tsc --noEmit` passes
 
 Do NOT implement: frontend files, deployment, README.
 
@@ -84,10 +86,10 @@ Do NOT implement: frontend files, deployment, README.
 - Visual style: calm, bookish — warm off-white background, deep ink text, one accent colour (e.g. teal #0f766e), rounded 12px cards, generous spacing. No emoji as icons.
 - Escape all server strings before inserting into the DOM (use `textContent`, never `innerHTML` with data).
 
-- [ ] `public/index.html`, `public/styles.css`, `public/app.js` implement the flow above against `POST /api/plan` and `GET /api/health`
-- [ ] No `innerHTML` assignment with server data (grep check) and no external scripts
-- [ ] `npx wrangler dev` smoke: `curl -s localhost:8787/` returns the page and `curl -s localhost:8787/api/health` returns `{"ok":true,"mode":"mock"}` (start `npx wrangler dev --port 8787` in the background, check, then stop it)
-- [ ] All validation commands pass
+- [x] `public/index.html`, `public/styles.css`, `public/app.js` implement the flow above against `POST /api/plan` and `GET /api/health`
+- [x] No `innerHTML` assignment with server data (grep check) and no external scripts
+- [x] `npx wrangler dev` smoke (run on port 8799 because 8787 is used by another local service): `curl -s localhost:8799/` returns the page and `curl -s localhost:8799/api/health` returns `{"ok":true,"mode":"mock"}` (start `npx wrangler dev --port 8799` in the background, check, then stop it)
+- [x] All validation commands pass
 
 Do NOT implement: new API fields, accounts, persistence, analytics, service worker.
 
@@ -96,8 +98,8 @@ Do NOT implement: new API fields, accounts, persistence, analytics, service work
 
 **Design Context**: `README.md` in English with sections: title + one-line pitch + live demo URL placeholder `https://taste-to-english.<subdomain>.workers.dev` (leave a clear TODO marker `DEMO_URL`); The problem (extensive reading/listening for Japanese learners, motivation gap); What it does (user flow); Why Qloo is essential (cross-domain taste graph: a Japanese game → an English podcast; remove Qloo and picks become generic); How Qloo is used (table: endpoint → purpose → params, for `/search`, `/v2/insights` with `filter.type=urn:tag`, `/v2/insights` per media type with `signal.interests.entities` and `feature.explainability`, `/v2/tags` for refine); Example request → result walkthrough with the API key redacted (`X-Api-Key: ***`) using mock-mode output shape, explaining how entities and tags were chosen; Architecture (Worker + Workers AI + Cache API, mermaid diagram); Responsible data handling (only public titles sent to Qloo, no accounts, no storage, server-side key, Qloo results are aggregate patterns, CEFR is an estimate, no Qloo data in the repo); Run it yourself (Node 22+, `npm install`, `npx wrangler dev` runs in mock mode without any key, `npx wrangler secret put QLOO_API_KEY` for live mode, `npm test`); Limits; License (MIT, see LICENSE). Also add `.dev.vars.example` with `QLOO_API_KEY=` (empty).
 
-- [ ] `README.md` covers all sections above
-- [ ] `.dev.vars.example` exists and contains no real value
-- [ ] All validation commands pass
+- [x] `README.md` covers all sections above
+- [x] `.dev.vars.example` exists and contains no real value
+- [x] All validation commands pass
 
 Do NOT implement: code changes beyond fixing doc-related typos.

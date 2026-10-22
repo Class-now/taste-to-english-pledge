@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taste-to-English — learn English through what you already love</title>
+  <meta name="description" content="Tell us 3 things you love. We'll find English books, podcasts and shows that match your taste — at your level.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M8 9h7a3 3 0 0 1 3 3v12a2.5 2.5 0 0 0-2.5-2.5H8z M24 9h-4a2 2 0 0 0-2 2v13a2.5 2.5 0 0 1 2.5-2.5H24z' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8"/><path d="M8 9h7a3 3 0 0 1 3 3v12a2.5 2.5 0 0 0-2.5-2.5H8z M24 9h-4a2 2 0 0 0-2 2v13a2.5 2.5 0 0 1 2.5-2.5H24z"/></svg>
+        <span class="brand-name">Taste-to-English</span>
+      </div>
+      <span id="mode-badge" class="mode-badge" hidden></span>
+    </div>
+    <div class="wrap">
+      <h1 class="pitch">Tell us 3 things you love. We'll find English books, podcasts and shows that match your taste — at your level.</h1>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <p id="demo-banner" class="demo-banner" role="status" hidden></p>
+
+    <form id="plan-form" class="card form-card" novalidate>
+      <fieldset class="field-group">
+        <legend>What do you love?</legend>
+        <p class="hint">Any language, any medium: anime, films, novels, games, podcasts, musicians. <button type="button" id="example-btn" class="link-btn">Try an example</button></p>
+        <ol id="favorites" class="favorites"></ol>
+        <button type="button" id="add-fav" class="ghost-btn">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Add another
+        </button>
+      </fieldset>
+
+      <fieldset class="field-group">
+        <legend>Your English level</legend>
+        <div class="segmented" role="radiogroup" aria-label="English level">
+          <label><input type="radio" name="level" value="A2"><span><strong>A2</strong><small>英検準2級</small></span></label>
+          <label><input type="radio" name="level" value="B1" checked><span><strong>B1</strong><small>英検2級</small></span></label>
+          <label><input type="radio" name="level" value="B2"><span><strong>B2</strong><small>英検準1級</small></span></label>
+          <label><input type="radio" name="level" value="C1"><span><strong>C1</strong><small>英検1級</small></span></label>
+        </div>
+        <p class="hint">Rough guide only — pick the level where you can follow most of a simple text.</p>
+      </fieldset>
+
+      <div class="row-2">
+        <fieldset class="field-group">
+          <legend>Minutes per day</legend>
+          <div class="segmented compact" role="radiogroup" aria-label="Minutes per day">
+            <label><input type="radio" name="minutes" value="10"><span><strong>10</strong></span></label>
+            <label><input type="radio" name="minutes" value="20" checked><span><strong>20</strong></span></label>
+            <label><input type="radio" name="minutes" value="30"><span><strong>30</strong></span></label>
+            <label><input type="radio" name="minutes" value="45"><span><strong>45</strong></span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend>Formats</legend>
+          <div class="checks">
+            <label class="check"><input type="checkbox" name="formats" value="read" checked><span>Read</span></label>
+            <label class="check"><input type="checkbox" name="formats" value="listen" checked><span>Listen</span></label>
+            <label class="check"><input type="checkbox" name="formats" value="watch" checked><span>Watch</span></label>
+          </div>
+        </fieldset>
+      </div>
+
+      <p id="form-error" class="form-error" role="alert" hidden></p>
+
+      <button type="submit" id="submit-btn" class="primary-btn">Build my plan</button>
+    </form>
+
+    <section id="agent-panel" class="card agent-panel" aria-labelledby="agent-title" hidden>
+      <div class="agent-head">
+        <div>
+          <h2 id="agent-title">Agent at work</h2>
+          <p id="agent-summary" class="agent-summary" hidden></p>
+        </div>
+        <div class="agent-actions">
+          <span id="agent-elapsed" class="agent-elapsed" hidden></span>
+          <button type="button" id="cancel-btn" class="ghost-btn small" hidden>Cancel</button>
+          <button type="button" id="trace-toggle" class="link-btn" aria-expanded="true" aria-controls="agent-steps" hidden>Hide steps</button>
+        </div>
+      </div>
+      <p id="agent-status" class="agent-status" aria-live="polite"></p>
+      <ol id="agent-steps" class="agent-steps"></ol>
+    </section>
+
+    <section id="error-box" class="card error-box" role="alert" tabindex="-1" hidden>
+      <h2 id="error-title">We couldn't build your plan</h2>
+      <p id="error-msg"></p>
+      <p id="error-step" class="muted"></p>
+      <div class="error-actions">
+        <button type="button" id="retry-btn" class="primary-btn small">Try again</button>
+        <button type="button" id="demo-retry-btn" class="ghost-btn small" hidden>Try with sample data</button>
+      </div>
+    </section>
+
+    <p id="results-status" class="sr-only" aria-live="polite"></p>
+
+    <div id="results" class="results" hidden>
+      <div id="warnings" class="notice" role="status" hidden>
+        <ul id="warnings-list"></ul>
+        <button type="button" id="dismiss-warnings" class="icon-btn" aria-label="Dismiss notice">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
+      <section class="block" id="seeds-block">
+        <h2>What Qloo matched</h2>
+        <p class="muted">Your favourites as Qloo's taste graph knows them.</p>
+        <ul id="seeds" class="seeds"></ul>
+        <p id="cross-domain" class="cross-domain" hidden></p>
+      </section>
+
+      <section class="block">
+        <h2>Your taste profile</h2>
+        <p class="muted">Taste themes Qloo connects with your favourites.</p>
+        <ul id="profile" class="chips"></ul>
+      </section>
+
+      <section class="block">
+        <h2>Your English picks</h2>
+        <p id="refine-note" class="refine-note" hidden></p>
+        <ul id="picks" class="picks"></ul>
+      </section>
+
+      <section class="block" id="plan-block">
+        <div class="block-head">
+          <h2>Your 7-day plan</h2>
+          <button type="button" id="copy-plan" class="ghost-btn small">Copy plan</button>
+        </div>
+        <p id="copy-status" class="copy-status" role="status"></p>
+        <ol id="plan" class="timeline"></ol>
+      </section>
+
+      <section class="block" id="vocab-block">
+        <h2>Starter vocabulary</h2>
+        <p class="muted" id="vocab-note">AI-generated — double-check in a dictionary.</p>
+        <div class="table-wrap">
+          <table class="vocab">
+            <thead><tr><th scope="col">Term</th><th scope="col" lang="ja">日本語</th><th scope="col">Example</th></tr></thead>
+            <tbody id="vocab"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="block card refine-card">
+        <form id="refine-form">
+          <h2>Refine your picks</h2>
+          <label for="refine-input" class="muted">Tell the agent what to change. It turns your words into Qloo taste signals and runs again.</label>
+          <div class="refine-row">
+            <input id="refine-input" name="refine" type="text" maxlength="200" placeholder="e.g. less fantasy, more mystery" autocomplete="off">
+            <button type="submit" id="refine-submit" class="primary-btn small">Refine</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <section>
+        <h2>How it works</h2>
+        <ul>
+          <li>Qloo's taste graph finds cross-domain matches — a Japanese game can lead to an English podcast.</li>
+          <li>An AI agent estimates English difficulty, checks its own picks (if a format comes up short, it asks Qloo again with your taste tags) and writes the plan.</li>
+          <li>Every step and tool call is shown live in the agent trace.</li>
+          <li>Only the titles you type are sent to Qloo and the AI, so please don't enter personal details. Nothing is stored except a 24-hour cache of Qloo results; there are no accounts.</li>
+        </ul>
+      </section>
+      <section>
+        <h2>Limits</h2>
+        <ul>
+          <li>Qloo results are aggregate taste patterns, not about you.</li>
+          <li>CEFR levels are estimates. If the AI is unavailable, simpler rule-based estimates are used and marked.</li>
+          <li>Demo mode uses a small hand-written sample set, not real Qloo data.</li>
+        </ul>
+      </section>
+      <section>
+        <h2>Project</h2>
+        <ul class="plain">
+          <li><a href="https://github.com/Class-now/qloo-reading-planner">Source on GitHub</a></li>
+          <li><a href="https://github.com/Class-now/qloo-reading-planner/blob/main/LICENSE">MIT license</a></li>
+          <li>Built with Llama — Workers AI runs <a href="https://www.llama.com/llama3_3/license/">Meta Llama 3.3</a></li>
+        </ul>
+      </section>
+    </div>
+  </footer>
+</body>
+</html>

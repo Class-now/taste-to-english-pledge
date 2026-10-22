@@ -80,5 +80,10 @@ export function parsePlanInput(body: unknown): ParseResult {
     if (refine) value.refine = refine;
   }
 
+  if (body.demo !== undefined && body.demo !== null) {
+    if (typeof body.demo !== "boolean") return fail("Demo must be true or false.");
+    if (body.demo) value.demo = true;
+  }
+
   return { ok: true, value };
 }

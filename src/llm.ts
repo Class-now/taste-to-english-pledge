@@ -7,8 +7,12 @@ export interface LlmJsonOptions {
   maxTokens?: number;
 }
 
+export type LlmSource = "workers-ai" | "rule-based";
+
 export interface Llm {
   json<T>(opts: LlmJsonOptions): Promise<T>;
+  /** Who answered the most recent `json` call (calls are made one at a time). */
+  readonly lastSource?: LlmSource;
 }
 
 export class LlmError extends Error {
@@ -40,6 +44,7 @@ export function parseLlmResponse(result: unknown): unknown {
 }
 
 export class WorkersAiLlm implements Llm {
+  readonly lastSource: LlmSource = "workers-ai";
   private readonly runner: AiRunner;
 
   constructor(
@@ -68,5 +73,37 @@ export class WorkersAiLlm implements Llm {
     }
     const reason = last instanceof Error ? last.message : String(last);
     throw new LlmError(`AI model call failed: ${reason}`);
+  }
+}
+
+/**
+ * Tries the primary model and, when a call throws, answers that call with the fallback instead.
+ * After two primary failures in a row it stops waiting on the primary for the rest of this run.
+ */
+export class ResilientLlm implements Llm {
+  lastSource: LlmSource | undefined;
+  private failures = 0;
+
+  constructor(
+    private readonly primary: Llm,
+    private readonly fallback: Llm,
+    private readonly maxFailures = 2,
+  ) {}
+
+  async json<T>(opts: LlmJsonOptions): Promise<T> {
+    if (this.failures < this.maxFailures) {
+      try {
+        const out = await this.primary.json<T>(opts);
+        this.failures = 0;
+        this.lastSource = this.primary.lastSource ?? "workers-ai";
+        return out;
+      } catch (err) {
+        this.failures += 1;
+        console.error("LLM call failed, using rule-based fallback:", err instanceof Error ? err.message : String(err));
+      }
+    }
+    const out = await this.fallback.json<T>(opts);
+    this.lastSource = this.fallback.lastSource ?? "rule-based";
+    return out;
   }
 }

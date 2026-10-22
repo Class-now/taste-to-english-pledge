@@ -155,4 +155,63 @@ describe("worker routes", () => {
     const res = await worker.fetch(new Request("https://example.com/"), makeEnv(), ctx);
     expect(await res.text()).toContain("asset");
   });
+
+  it("streams NDJSON agent events ending with the result when asked", async () => {
+    const req = plan(validBody);
+    req.headers.set("accept", "application/x-ndjson");
+    const res = await worker.fetch(req, makeEnv(), ctx);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/x-ndjson; charset=utf-8");
+    const lines = (await res.text()).trim().split("\n").map((l) => JSON.parse(l) as { type: string; [k: string]: unknown });
+    expect(lines[0].type).toBe("start");
+    expect(lines.some((l) => l.type === "call")).toBe(true);
+    expect(lines.filter((l) => l.type === "step").length).toBe(9 - 1); // no refine step
+    const last = lines[lines.length - 1] as { type: string; result: { picks: unknown[]; seeds: unknown[] } };
+    expect(last.type).toBe("result");
+    expect(last.result.picks.length).toBeGreaterThanOrEqual(6);
+    expect(last.result.seeds).toHaveLength(3);
+  });
+
+  it("streams an error event (not a 502) when a step fails mid-stream", async () => {
+    const req = plan({ ...validBody, favorites: [{ title: "zzz nothing matches this" }] });
+    req.headers.set("accept", "application/x-ndjson");
+    const res = await worker.fetch(req, makeEnv(), ctx);
+    expect(res.status).toBe(200);
+    const lines = (await res.text()).trim().split("\n").map((l) => JSON.parse(l) as { type: string; step?: string; error?: string });
+    const last = lines[lines.length - 1];
+    expect(last).toMatchObject({ type: "error", step: "resolve" });
+    expect(last.error).toMatch(/couldn't find any of these titles/);
+  });
+
+  it("keeps validation and rate-limit errors as plain JSON on the streaming path", async () => {
+    const req = plan({ ...validBody, level: "Z9" });
+    req.headers.set("accept", "application/x-ndjson");
+    const res = await worker.fetch(req, makeEnv(), ctx);
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
+  });
+
+  it("uses the sample data for demo runs even when a key is set, without calling Qloo", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const res = await worker.fetch(plan({ ...validBody, demo: true }), makeEnv({ QLOO_API_KEY: "k" }), ctx);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { mode: string; picks: unknown[] };
+    expect(body.mode).toBe("mock");
+    expect(body.picks.length).toBeGreaterThan(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("still builds a plan with rule-based answers when Workers AI is missing or failing", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken = { async run() { throw new Error("not logged in"); } } as unknown as Ai;
+    for (const env of [makeEnv({ AI: undefined }), makeEnv({ AI: broken })]) {
+      resetMemoryCache();
+      const res = await worker.fetch(plan(validBody, `192.0.2.${env.AI ? 1 : 2}`), env, ctx);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { plan: unknown[]; trace: { status?: string }[]; warnings: string[] };
+      expect(body.plan).toHaveLength(7);
+      expect(body.trace.some((t) => t.status === "fallback")).toBe(true);
+      expect(body.warnings.some((w) => /simple rules/.test(w))).toBe(true);
+    }
+  });
 });

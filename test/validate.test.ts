@@ -64,4 +64,13 @@ describe("parsePlanInput", () => {
     expectError({ ...valid, refine: "x".repeat(201) }, /at most 200/);
     expectError({ ...valid, refine: 5 }, /Refine/);
   });
+
+  it("accepts a boolean demo flag and rejects other values", () => {
+    const body = { favorites: [{ title: "Arcane" }], level: "B1", minutesPerDay: 20, formats: ["watch"] };
+    const on = parsePlanInput({ ...body, demo: true });
+    expect(on.ok && on.value.demo).toBe(true);
+    const off = parsePlanInput({ ...body, demo: false });
+    expect(off.ok && off.value.demo).toBeUndefined();
+    expect(parsePlanInput({ ...body, demo: "yes" }).ok).toBe(false);
+  });
 });

@@ -26,7 +26,7 @@ describe("runPlan", () => {
     const r = await runPlan(base, { qloo, llm: new FakeLlm(), mode: "mock" });
 
     expect(r.mode).toBe("mock");
-    expect(r.trace.map((t) => t.id)).toEqual(["normalize", "resolve", "profile", "recommend", "level", "explain", "plan"]);
+    expect(r.trace.map((t) => t.id)).toEqual(["normalize", "resolve", "profile", "recommend", "level", "review", "explain", "plan"]);
     for (const t of r.trace) {
       expect(t.label.length).toBeGreaterThan(0);
       expect(t.detail.length).toBeGreaterThan(0);
@@ -80,7 +80,7 @@ describe("runPlan", () => {
     const llm = new FakeLlm();
     const r = await runPlan({ ...base, refine: "more mystery, less romance" }, { qloo, llm, mode: "mock" });
 
-    expect(r.trace.map((t) => t.id)).toEqual(["normalize", "resolve", "profile", "refine", "recommend", "level", "explain", "plan"]);
+    expect(r.trace.map((t) => t.id)).toEqual(["normalize", "resolve", "profile", "refine", "recommend", "level", "review", "explain", "plan"]);
     expect(r.trace[3].detail).toContain("mystery");
     expect(r.trace[3].detail).toContain("romance");
     for (const c of qloo.insightCalls) expect(c.tagIds).toEqual(["urn:tag:keyword:media:mystery"]);
@@ -323,7 +323,7 @@ describe("runPlan", () => {
     expect(r.warnings).toContain("Only 3 works matched your level closely");
   });
 
-  it("fails the level step when nothing fits the learner's level", async () => {
+  it("fails at the review step when nothing fits the learner's level, even after widening", async () => {
     const llm = new FakeLlm({
       level: (opts) => {
         const items = JSON.parse(opts.user.slice(opts.user.indexOf("INPUT:") + 6)) as { id: string }[];
@@ -332,7 +332,7 @@ describe("runPlan", () => {
     });
     const err = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" }).catch((e) => e);
     expect(err).toBeInstanceOf(AgentError);
-    expect(err.step).toBe("level");
+    expect(err.step).toBe("review");
     expect(err.message).toMatch(/None of the matches fit your English level/);
   });
 

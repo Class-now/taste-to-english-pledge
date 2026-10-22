@@ -18,7 +18,7 @@ export interface LevelEstimate {
 
 export const MIN_PICKS = 6;
 export const MAX_PICKS = 9;
-const MIN_PER_FORMAT = 2;
+export const MIN_PER_FORMAT = 2;
 
 const FIT_PRIORITY: Record<Fit, number> = { match: 0, stretch: 1, easier: 2 };
 

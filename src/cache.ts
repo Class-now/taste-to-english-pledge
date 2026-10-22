@@ -5,6 +5,18 @@ const DAY_SECONDS = 24 * 60 * 60;
 const CACHE_ORIGIN = "https://qloo-cache.local";
 const MEMORY_MAX_ENTRIES = 300;
 const isolateEntries = new Map<string, { body: string; expires: number }>();
+// Results served from a cache, so the agent trace can label them without widening the QlooClient interface.
+const cachedResults = new WeakSet<object>();
+
+/** True when `value` was returned from the cache rather than a fresh upstream call. */
+export function wasCached(value: unknown): boolean {
+  return typeof value === "object" && value !== null && cachedResults.has(value);
+}
+
+function markCached<T>(value: T): T {
+  if (typeof value === "object" && value !== null) cachedResults.add(value);
+  return value;
+}
 
 /** `caches.default` when the Cache API exists (Workers), else undefined (e.g. plain Node). */
 export function defaultCache(): Cache | undefined {
@@ -40,12 +52,12 @@ export class CachedQlooClient implements QlooClient {
   private async cached<T>(method: string, args: Record<string, unknown>, run: () => Promise<T>): Promise<T> {
     const key = this.cacheKey(method, args);
     const mem = this.memory.get(key);
-    if (mem && mem.expires > this.now()) return JSON.parse(mem.body) as T;
+    if (mem && mem.expires > this.now()) return markCached(JSON.parse(mem.body) as T);
     if (mem) this.memory.delete(key);
     if (!this.cache) return this.remember(key, await run());
     try {
       const hit = await this.cache.match(key);
-      if (hit) return this.remember(key, (await hit.json()) as T);
+      if (hit) return markCached(this.remember(key, (await hit.json()) as T));
     } catch {
       // best effort: a broken cache read is a miss
     }

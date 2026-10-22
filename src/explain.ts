@@ -1,4 +1,4 @@
-import type { QlooEntity, QlooTag } from "./types";
+import type { PickEvidence, QlooEntity, QlooTag } from "./types";
 
 const SCORE_KEYS = ["score", "affinity", "weight", "value"];
 
@@ -67,4 +67,26 @@ export function explainPick(pick: QlooEntity, seeds: QlooEntity[], profile: Qloo
 
   if (pick.affinity !== undefined) return `Strong taste match (${Math.round(pick.affinity * 100)}%)`;
   return "Recommended by Qloo for your taste";
+}
+
+/**
+ * The Qloo evidence behind a pick: seeds named in its explainability (strongest first) and the tag
+ * names it shares with the favourites or the taste profile. Qloo data only, never the LLM.
+ */
+export function pickEvidence(pick: QlooEntity, seeds: QlooEntity[], profile: QlooTag[] = []): PickEvidence {
+  const seedById = new Map(seeds.map((s) => [s.id, s]));
+  const contributions = [...contributors(pick.explainability, new Set(seedById.keys()))]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, score]) => ({ seedId: id, name: seedById.get(id)!.name, ...(score > 0 ? { score: Math.min(1, score) } : {}) }));
+  const pickTags = new Map<string, QlooTag>();
+  for (const t of pick.tags) {
+    pickTags.set(t.id, t);
+    pickTags.set(tagKey(t), t);
+  }
+  const sharedTags: string[] = [];
+  for (const t of [...seeds.flatMap((s) => s.tags), ...profile]) {
+    const match = pickTags.get(t.id) ?? pickTags.get(tagKey(t));
+    if (match && !sharedTags.includes(match.name)) sharedTags.push(match.name);
+  }
+  return { contributions, sharedTags: sharedTags.slice(0, 6) };
 }

@@ -339,3 +339,5 @@ input[type="text"]:focus-visible, select:focus-visible { outline-offset: 0; bord
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
   .agent-step.active .dot { border-top-color: var(--accent); }
 }
+
+.refine-note { margin: 4px 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-strong); font-size: 0.9rem; }

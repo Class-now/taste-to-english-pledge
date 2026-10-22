@@ -106,7 +106,9 @@
       </div>
     </section>
 
-    <div id="results" class="results" aria-live="polite" hidden>
+    <p id="results-status" class="sr-only" aria-live="polite"></p>
+
+    <div id="results" class="results" hidden>
       <div id="warnings" class="notice" role="status" hidden>
         <ul id="warnings-list"></ul>
         <button type="button" id="dismiss-warnings" class="icon-btn" aria-label="Dismiss notice">
@@ -129,6 +131,7 @@
 
       <section class="block">
         <h2>Your English picks</h2>
+        <p id="refine-note" class="refine-note" hidden></p>
         <ul id="picks" class="picks"></ul>
       </section>
 
@@ -158,7 +161,7 @@
           <label for="refine-input" class="muted">Tell the agent what to change. It turns your words into Qloo taste signals and runs again.</label>
           <div class="refine-row">
             <input id="refine-input" name="refine" type="text" maxlength="200" placeholder="e.g. less fantasy, more mystery" autocomplete="off">
-            <button type="submit" class="primary-btn small">Refine</button>
+            <button type="submit" id="refine-submit" class="primary-btn small">Refine</button>
           </div>
         </form>
       </section>

@@ -55,6 +55,9 @@ const ICONS = {
 
 const $ = (id) => document.getElementById(id);
 const els = {
+  refineSubmit: $("refine-submit"),
+  refineNote: $("refine-note"),
+  resultsStatus: $("results-status"),
   form: $("plan-form"),
   favorites: $("favorites"),
   addFav: $("add-fav"),
@@ -107,6 +110,7 @@ let rowSeq = 0;
 let healthMode = null; // from /api/health
 let runMode = null; // from the stream's start event or the result
 let lastResultMode = null;
+let retryEdits = false;
 
 // Trace state for the current run.
 const trace = { steps: new Map(), order: [], startedAt: 0, endedAt: 0 };
@@ -160,6 +164,13 @@ function toPct(v) {
   return Math.max(0, Math.min(100, Math.round(p)));
 }
 
+const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "of", "on", "or", "the", "to", "with"]);
+
+/** "Coming Of Age" → "Coming of Age" (Qloo tag names are title-cased word by word). */
+function tidyTag(name) {
+  return String(name).split(" ").map((w, i) => (i > 0 && SMALL_WORDS.has(w.toLowerCase()) ? w.toLowerCase() : w)).join(" ");
+}
+
 function fmtMs(ms) {
   if (!Number.isFinite(ms)) return "";
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
@@ -194,9 +205,10 @@ async function loadMode() {
 }
 
 function updateModeUi() {
-  const serverMode = healthMode || runMode;
-  const sampleRun = lastResultMode === "mock" && serverMode === "live";
-  const effective = DEMO || sampleRun ? "mock" : lastResultMode || serverMode;
+  // While a run is going, its own mode (from the start event) wins; afterwards, the last result's.
+  const shownRun = busy ? runMode : lastResultMode || runMode;
+  const sampleRun = shownRun === "mock" && healthMode === "live";
+  const effective = DEMO || sampleRun ? "mock" : shownRun || healthMode;
 
   if (effective === "live" || effective === "mock") {
     els.modeBadge.textContent = effective === "live" ? "Live Qloo data" : "Demo mode: sample data";
@@ -547,11 +559,12 @@ function stopProgress(outcome) {
   els.agentStatus.textContent = status;
   updateSummary();
   if (trace.order.length === 0) {
-    els.agentSteps.hidden = true;
-    els.traceToggle.hidden = true;
+    // Nothing ran (e.g. rate limited before the agent started): the error box says enough.
+    els.agentPanel.hidden = true;
   } else {
     els.traceToggle.hidden = false;
-    setTraceExpanded(true);
+    // On a phone the full trace pushes the picks far down; the summary line still shows the agent's work.
+    setTraceExpanded(!(outcome === "done" && window.innerWidth < 640));
   }
 }
 
@@ -673,7 +686,7 @@ function renderResults(data) {
   clear(els.profile);
   for (const tag of data.profile || []) {
     if (!tag || !tag.name) continue;
-    const chip = el("li", { class: "chip" }, el("span", { text: tag.name }));
+    const chip = el("li", { class: "chip" }, el("span", { text: tidyTag(tag.name) }));
     const pct = toPct(tag.affinity);
     if (pct !== null) {
       chip.classList.add("has-affinity");
@@ -731,7 +744,16 @@ function renderResults(data) {
   }
   els.vocabBlock.hidden = !els.vocab.firstChild;
 
+  // Say plainly when these picks are a refined run, and what the agent made of the wording.
+  const refineStep = steps.find((st) => st && st.id === "refine" && st.status !== "failed");
+  const refineText = lastRequest && lastRequest.refine;
+  els.refineNote.textContent = refineText
+    ? `Refined: “${refineText}”${refineStep && refineStep.detail ? ` → ${refineStep.detail}` : ""}`
+    : "";
+  els.refineNote.hidden = !refineText;
+
   els.results.hidden = false;
+  els.resultsStatus.textContent = `Plan ready: ${picks.length} picks and a 7-day plan.`;
 }
 
 function renderSeeds(seeds, picks) {
@@ -783,7 +805,7 @@ function renderPick(p, i) {
   if (affinity !== null) {
     const b = el("div", { class: "affinity-bar", role: "presentation" }, el("span"));
     b.firstChild.style.width = `${affinity}%`;
-    body.append(el("div", { class: "affinity" }, `Taste match ${affinity}%`, b));
+    body.append(el("div", { class: "affinity", title: "Qloo affinity: how closely this work fits the taste of people who like your favourites" }, `Taste match ${affinity}%`, b));
   }
 
   if (p.because) body.append(el("p", { class: "because", text: p.because }));
@@ -807,7 +829,7 @@ function renderWhy(p, affinity) {
   const contributions = Array.isArray(ev.contributions) ? ev.contributions.filter((c) => c && c.name) : [];
   const tags = Array.isArray(ev.sharedTags) ? ev.sharedTags.filter((t) => typeof t === "string" && t) : [];
   const popularity = toPct(p.popularity);
-  if (!contributions.length && !tags.length && affinity === null && popularity === null) return null;
+  if (!contributions.length && !tags.length && popularity === null) return null;
 
   const panel = el("div", { class: "why-body" }, el("p", { class: "why-source", text: "From Qloo data" }));
 
@@ -820,17 +842,16 @@ function renderWhy(p, affinity) {
       else row.classList.add("no-score");
       list.append(row);
     }
-    panel.append(el("p", { class: "why-label", text: "Linked to your favourites" }), list);
+    panel.append(el("p", { class: "why-label", text: "How strongly each favourite led Qloo here" }), list);
   }
 
   if (tags.length) {
     const chips = el("ul", { class: "chips small" });
-    for (const t of tags) chips.append(el("li", { class: "chip", text: t }));
+    for (const t of tags) chips.append(el("li", { class: "chip", text: tidyTag(t) }));
     panel.append(el("p", { class: "why-label", text: "Shared taste tags" }), chips);
   }
 
   const facts = el("ul", { class: "why-facts" });
-  if (affinity !== null) facts.append(el("li", { text: `Qloo affinity ${affinity}%` }));
   if (popularity !== null) facts.append(el("li", { text: `Qloo popularity percentile ${popularity}%` }));
   if (facts.firstChild) panel.append(facts);
 
@@ -895,7 +916,13 @@ const STEP_NAMES = {
 
 function showError(message, step, opts = {}) {
   els.errorTitle.textContent = opts.title || "We couldn't build your plan";
-  els.errorMsg.textContent = message || "Something went wrong.";
+  const sampleRun = runMode === "mock" || (!runMode && healthMode === "mock") || (lastRequest && lastRequest.demo);
+  const titlesMissing = step === "resolve";
+  els.errorMsg.textContent = (message || "Something went wrong.") +
+    (titlesMissing && sampleRun ? " Demo mode only knows a few dozen sample titles, such as 千と千尋の神隠し, ペルソナ5, ノルウェイの森, Arcane or Radiolab." : "");
+  // Re-sending titles that weren't found would fail the same way, so offer to edit them instead.
+  retryEdits = titlesMissing;
+  els.retry.textContent = titlesMissing ? "Edit titles" : "Try again";
   els.errorStep.textContent = step ? `The agent stopped while ${STEP_NAMES[step] || step}.` : "";
   els.errorStep.hidden = !step;
   const mode = runMode || healthMode;
@@ -912,6 +939,8 @@ async function run(input) {
   busy = true;
   lastRequest = input;
   runMode = null;
+  lastResultMode = null;
+  els.refineSubmit.disabled = true;
   abortReason = null;
   hideFormError();
   els.errorBox.hidden = true;
@@ -964,7 +993,8 @@ async function run(input) {
     let data = null;
     try {
       data = await res.json();
-    } catch {
+    } catch (err) {
+      if (abortReason) throw err;
       data = null;
     }
     if (res.ok && data && Array.isArray(data.picks)) {
@@ -998,6 +1028,8 @@ async function run(input) {
     if (tickTimer) stopProgress(outcome);
     controller = null;
     busy = false;
+    els.refineSubmit.disabled = false;
+    updateModeUi();
     els.submit.disabled = false;
     els.submit.textContent = "Build my plan";
   }
@@ -1018,6 +1050,7 @@ els.form.addEventListener("submit", (e) => {
     showFormError(r.error);
     return;
   }
+  if (busy) return;
   els.refineInput.value = "";
   run(r.value);
 });
@@ -1038,7 +1071,16 @@ els.addFav.addEventListener("click", () => {
   if (input) input.focus();
 });
 els.example.addEventListener("click", fillExample);
-els.retry.addEventListener("click", () => lastRequest && run(lastRequest));
+els.retry.addEventListener("click", () => {
+  if (retryEdits) {
+    els.errorBox.hidden = true;
+    const first = els.favorites.querySelector("input");
+    first?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+    first?.focus({ preventScroll: true });
+    return;
+  }
+  if (lastRequest) run(lastRequest);
+});
 els.demoRetry.addEventListener("click", () => lastRequest && run({ ...lastRequest, demo: true }));
 els.cancel.addEventListener("click", () => {
   if (!controller) return;

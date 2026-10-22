@@ -2,6 +2,8 @@
 
 Branch `p2-polish` (from `p1-mvp`). Written 2026-10-22, before implementation.
 
+Status (2026-10-22): Tasks 1–8 implemented on `p2-polish`; three independent reviews (correctness, keys / prompt injection, judging fit / UX) were run and their findings fixed. Still open: deploy, live-key verification, final screenshots with live data (see `docs/next-steps.md`). Deviation from Task 5: an extra `wrangler.offline.jsonc` (no AI binding) was added so the demo runs without any Cloudflare login.
+
 ## Why (judging criteria, re-read 2026-10-22)
 
 qloo.devpost.com could not be opened from the build container (DNS failure), so the criteria below come from search-result summaries of the Devpost page plus the kit's `docs/SUBMISSION.md` (read verbatim). The PM should re-check the Devpost page in a browser before submitting.

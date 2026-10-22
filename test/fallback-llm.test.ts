@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RuleBasedLlm, estimateLevel } from "../src/fallback-llm";
+import { RuleBasedLlm, estimateLevel, parseRefine } from "../src/fallback-llm";
 import { ResilientLlm, type Llm } from "../src/llm";
 import { levelPrompt, normalizePrompt, planPrompt, refinePrompt } from "../src/prompts";
 
@@ -70,5 +70,20 @@ describe("ResilientLlm", () => {
     await llm.json(refinePrompt("more mystery"));
     await llm.json(refinePrompt("more mystery"));
     expect(calls).toBe(3);
+  });
+});
+
+describe("parseRefine", () => {
+  it.each([
+    ["less fantasy, more mystery", ["mystery"], ["fantasy"]],
+    ["more mystery?", ["mystery"], []],
+    ["nothing scary, more comedy", ["comedy"], ["scary"]],
+    ["I don't want horror", [], ["horror"]],
+    ["more mystery and horror", ["mystery", "horror"], []],
+    ["not in English", [], []],
+    ["more science fiction after 2010, please", ["science fiction"], []],
+    ["shorter books", [], []],
+  ])("%s", (text, add, avoid) => {
+    expect(parseRefine(text)).toEqual({ addTags: add, avoidTags: avoid });
   });
 });

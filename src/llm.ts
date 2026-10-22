@@ -5,6 +5,8 @@ export interface LlmJsonOptions {
   user: string;
   schema: object;
   maxTokens?: number;
+  /** Optional check of a parsed answer; a resilient wrapper treats `false` like a failed call. */
+  accept?: (out: unknown) => boolean;
 }
 
 export type LlmSource = "workers-ai" | "rule-based";
@@ -94,6 +96,7 @@ export class ResilientLlm implements Llm {
     if (this.failures < this.maxFailures) {
       try {
         const out = await this.primary.json<T>(opts);
+        if (opts.accept && !opts.accept(out)) throw new LlmError("The model's answer was unusable");
         this.failures = 0;
         this.lastSource = this.primary.lastSource ?? "workers-ai";
         return out;

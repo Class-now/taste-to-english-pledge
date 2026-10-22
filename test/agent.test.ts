@@ -177,7 +177,7 @@ describe("runPlan", () => {
   it("falls back to an untyped search when the type guess is wrong", async () => {
     const llm = new FakeLlm({ normalize: () => ({ items: [{ query: "Persona 5", typeGuess: "book" }] }) });
     const r = await runPlan({ ...base, favorites: [{ title: "Persona 5" }] }, { qloo: new MockQlooClient(), llm, mode: "mock" });
-    expect(r.trace[1].detail).toContain("Persona 5 (videogame");
+    expect(r.trace[1].detail).toContain("Persona 5 (video game");
   });
 
   it("prefers an exact name match over the top hit for a guessed type", async () => {
@@ -189,7 +189,7 @@ describe("runPlan", () => {
     })();
     const llm = new FakeLlm({ normalize: () => ({ items: [{ index: 0, query: "Spirited Away", typeGuess: "tv_show" }] }) });
     const r = await runPlan({ ...base, favorites: [{ title: "千と千尋の神隠し" }] }, { qloo, llm, mode: "mock" });
-    expect(r.trace[1].detail).toContain("Spirited Away (movie");
+    expect(r.trace[1].detail).toContain("Spirited Away (film");
   });
 
   it("keeps English books whose language has a region suffix", async () => {
@@ -287,7 +287,7 @@ describe("runPlan", () => {
       }),
     });
     const r = await runPlan(base, { qloo: new MockQlooClient(), llm, mode: "mock" });
-    expect(r.trace[0].detail).toContain('"千と千尋の神隠し" → "Spirited Away" (movie)');
+    expect(r.trace[0].detail).toContain('"千と千尋の神隠し" → "Spirited Away" (film)');
     expect(r.trace[0].detail).toContain('"ノルウェイの森" → "Norwegian Wood" (book)');
     // The skipped favourite falls back to its own title with no type guess.
     expect(r.trace[0].detail).toContain('"ペルソナ5" → "ペルソナ5";');

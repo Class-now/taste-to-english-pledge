@@ -181,6 +181,8 @@ export class HttpQlooClient implements QlooClient {
     const init = (): RequestInit => ({
       method: "GET",
       headers: { "X-Api-Key": this.apiKey, Accept: "application/json" },
+      // Never follow a redirect: the key header would go to wherever it points.
+      redirect: "manual",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     let res = await this.fetchFn(url, init());
@@ -189,6 +191,10 @@ export class HttpQlooClient implements QlooClient {
       await res.body?.cancel();
       await new Promise((r) => setTimeout(r, this.retryDelayMs));
       res = await this.fetchFn(url, init());
+    }
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel();
+      throw new QlooError(res.status, "Qloo answered with a redirect, which is not followed");
     }
     const text = await res.text();
     if (!res.ok) {

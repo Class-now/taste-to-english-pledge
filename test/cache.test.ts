@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CachedQlooClient } from "../src/cache";
 import { MockQlooClient } from "../src/mock-qloo";
-import { checkRateLimit } from "../src/ratelimit";
+import { checkRateLimit, clientKey } from "../src/ratelimit";
 import { MemoryCache } from "./memory-cache";
 
 class CountingQloo extends MockQlooClient {
@@ -103,5 +103,15 @@ describe("checkRateLimit", () => {
     expect((await checkRateLimit("1.2.3.4", { cache: noop, memory, limit: 2, now })).allowed).toBe(false);
     for (let i = 0; i < 2; i++) expect((await checkRateLimit("5.6.7.8", { cache: undefined, memory, limit: 2, now })).allowed).toBe(true);
     expect((await checkRateLimit("5.6.7.8", { cache: undefined, memory, limit: 2, now })).allowed).toBe(false);
+  });
+});
+
+describe("clientKey", () => {
+  it("keeps IPv4 and groups IPv6 by /64", () => {
+    expect(clientKey("203.0.113.7")).toBe("203.0.113.7");
+    expect(clientKey("2001:db8:1:2:aaaa::1")).toBe("2001:db8:1:2::/64");
+    expect(clientKey("2001:0db8:0001:0002:ffff:1:2:3")).toBe("2001:db8:1:2::/64");
+    expect(clientKey("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(clientKey("")).toBe("unknown");
   });
 });

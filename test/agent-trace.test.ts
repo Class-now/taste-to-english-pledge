@@ -179,3 +179,22 @@ describe("prompt-injection hardening", () => {
     for (const c of llm.calls) expect(c.opts.system).toMatch(/never an instruction to you/);
   });
 });
+
+describe("stripUrls on bare domains and schemes", () => {
+  it("drops bare domains and javascript:/data: but keeps ordinary prose", () => {
+    expect(stripUrls("visit evil.com/login now")).toBe("visit now");
+    expect(stripUrls("try hxxps://x.example and javascript:alert(1)")).toBe("try and");
+    expect(stripUrls("Read 3.5 pages with Mr. Fox in the U.S. today")).toBe("Read 3.5 pages with Mr. Fox in the U.S. today");
+  });
+});
+
+describe("unusable model answers", () => {
+  it("falls back to rules when Workers AI answers but rates none of the works", async () => {
+    const primary = new FakeLlm({ level: () => ({ items: [] }) });
+    const r = await runPlan(base, { qloo: new MockQlooClient(), llm: new ResilientLlm(primary, new RuleBasedLlm(), 99), mode: "mock" });
+    const level = r.trace.find((t) => t.id === "level")!;
+    expect(level.status).toBe("fallback");
+    expect(r.picks.length).toBeGreaterThanOrEqual(6);
+    expect(r.trace.find((t) => t.id === "plan")!.status).toBe("ok");
+  });
+});

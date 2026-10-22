@@ -16,6 +16,8 @@ export interface Env {
   QLOO_API_KEY?: string;
 }
 
+const MAX_BODY_BYTES = 8 * 1024;
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -24,6 +26,10 @@ function json(body: unknown, status = 200): Response {
 }
 
 async function handlePlan(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // The largest valid body is well under 2 KB; refuse big ones before parsing.
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
+    return json({ error: "Request body is too large." }, 413);
+  }
   let body: unknown;
   try {
     body = await request.json();
@@ -34,14 +40,15 @@ async function handlePlan(request: Request, env: Env, ctx: ExecutionContext): Pr
   if (!parsed.ok) return json({ error: parsed.error }, 400);
 
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  const limit = await checkRateLimit(ip);
+  // Demo runs make no Qloo calls, so they get their own allowance instead of eating into the live one.
+  const limit = await checkRateLimit(parsed.value.demo ? `demo:${ip}` : ip);
   if (!limit.allowed) return json({ error: "Too many plans this hour, try again later." }, 429);
 
   try {
     const mode = parsed.value.demo ? "mock" : qlooMode(env);
     const deps: AgentDeps = {
       // Demo runs use the hand-written sample set even when a key is configured.
-      qloo: new CachedQlooClient(parsed.value.demo ? new MockQlooClient() : createQlooClient(env), undefined, `v1-${mode}`),
+      qloo: new CachedQlooClient(parsed.value.demo ? new MockQlooClient() : createQlooClient(env), undefined, `v2-${mode}`),
       llm: makeLlm(env),
       mode,
     };
@@ -66,17 +73,15 @@ function streamPlan(input: PlanInput, deps: AgentDeps, ctx: ExecutionContext): R
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
   const encoder = new TextEncoder();
-  let open = true;
+  const gone = new AbortController();
   const send = (e: AgentEvent) => {
-    if (!open) return;
-    // A client that went away makes writes reject; stop writing but let the run finish quietly.
-    writer.write(encoder.encode(`${JSON.stringify(e)}\n`)).catch(() => {
-      open = false;
-    });
+    if (gone.signal.aborted) return;
+    // A client that went away makes writes reject; stop writing and stop the run before its next step.
+    writer.write(encoder.encode(`${JSON.stringify(e)}\n`)).catch(() => gone.abort());
   };
   const run = (async () => {
     try {
-      const result = await runPlan(input, { ...deps, onEvent: send });
+      const result = await runPlan(input, { ...deps, onEvent: send, signal: gone.signal });
       send({ type: "result", result });
     } catch (err) {
       if (err instanceof AgentError) {

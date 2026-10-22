@@ -92,16 +92,49 @@ const WORDS: Record<string, [string, string, string][]> = {
   ],
 };
 
-function activity(p: PlanPromptInput["picks"][number], minutes: number, day: number): string {
+function activity(p: PlanPromptInput["picks"][number], minutes: number, first: boolean): string {
   if (p.format === "read") {
     const pages = Math.max(2, Math.round(minutes / 3));
-    return day === 1 ? `Read the first ${pages} pages of "${p.title}" without a dictionary` : `Read about ${pages} more pages of "${p.title}"`;
+    return first ? `Read the first ${pages} pages of "${p.title}" without a dictionary` : `Read the next ${pages} pages of "${p.title}"`;
   }
-  if (p.format === "listen") return minutes >= 30 ? `Listen to one episode of "${p.title}" and note 3 new words` : `Listen to the first ${minutes} minutes of an episode of "${p.title}"`;
-  return minutes >= 30 ? `Watch one episode of "${p.title}" with English subtitles` : `Watch ${minutes} minutes of "${p.title}" with English subtitles`;
+  if (p.format === "listen") {
+    if (minutes >= 30) return `Listen to ${first ? "one" : "another"} episode of "${p.title}" and note 3 new words`;
+    return `Listen to ${first ? "the first" : "the next"} ${minutes} minutes of ${first ? "an" : "the"} episode of "${p.title}"`;
+  }
+  const how = "with English audio and English subtitles";
+  if (p.type === "tv_show" && minutes >= 30) return `Watch ${first ? "the first" : "the next"} episode of "${p.title}" ${how}`;
+  return `Watch ${first ? "the first" : "the next"} ${minutes} minutes of "${p.title}" ${how}`;
 }
 
-const PHRASE = /\b(?:more|less|fewer|no|without|avoid|not)\s+([a-z][a-z -]{1,30}?)(?=[,.;!]|\s+(?:and|but|please|after|before|since|from|than|newer|older)\b|$)/gi;
+const ADD = /^(?:more|extra|add|i want|i'd like|give me)\s+/i;
+const AVOID = /^(?:less|fewer|no|nothing|without|avoid|skip|not|don'?t want|do not want|no more)\s+/i;
+const FILLER = /^(?:(?:the|a|an|any|some|so much|too much|of)\s+)+/i;
+
+/** "less fantasy, more mystery and horror" → add [mystery, horror], avoid [fantasy]. Words after "and" keep the last direction. */
+export function parseRefine(text: string): { addTags: string[]; avoidTags: string[] } {
+  const addTags: string[] = [];
+  const avoidTags: string[] = [];
+  let into: string[] | undefined;
+  for (const clause of text.toLowerCase().split(/[,;.?!]+|\s+but\s+/)) {
+    for (const [i, raw] of clause.split(/\s+(?:and|or|&)\s+/).entries()) {
+      let part = raw.trim().replace(/^i\s+(?=don'?t|do not|want|'d)/, "");
+      if (ADD.test(part)) {
+        into = addTags;
+        part = part.replace(ADD, "");
+      } else if (AVOID.test(part)) {
+        into = avoidTags;
+        part = part.replace(AVOID, "");
+      } else if (i === 0) {
+        into = undefined; // a new clause without a direction word says nothing about tags
+      }
+      // Stop at year talk ("after 2010") and keep only plain words.
+      part = part.split(/\s+(?:after|before|since|from|than|newer|older|please)\b/)[0].replace(FILLER, "").trim();
+      if (!into || !/^[a-z][a-z -]{1,30}$/.test(part) || /english|japanese/.test(part)) continue;
+      if (!into.includes(part)) into.push(part);
+    }
+  }
+  return { addTags: addTags.slice(0, 3), avoidTags: avoidTags.slice(0, 3) };
+}
 
 export class RuleBasedLlm implements Llm {
   readonly lastSource: LlmSource = "rule-based";
@@ -121,13 +154,7 @@ export class RuleBasedLlm implements Llm {
       }
       case "refine": {
         const { text } = promptInput<{ text: string }>(opts.user);
-        const addTags: string[] = [];
-        const avoidTags: string[] = [];
-        for (const m of text.matchAll(PHRASE)) {
-          const phrase = m[1].trim().toLowerCase();
-          (/^more$/i.test(m[0].split(/\s/)[0]) ? addTags : avoidTags).push(phrase);
-        }
-        const out: Record<string, unknown> = { addTags: addTags.slice(0, 3), avoidTags: avoidTags.slice(0, 3) };
+        const out: Record<string, unknown> = { ...parseRefine(text) };
         const after = /\b(?:after|since|newer than)\s+((?:18|19|20)\d\d)\b/i.exec(text);
         const before = /\b(?:before|older than)\s+((?:18|19|20)\d\d)\b/i.exec(text);
         if (after) out.minYear = Number(after[1]);
@@ -148,9 +175,12 @@ export class RuleBasedLlm implements Llm {
         for (const p of order.slice(1)) queues.set(p.format, [...(queues.get(p.format) ?? []), p]);
         rotated.push(order[0]);
         while ([...queues.values()].some((q) => q.length)) for (const q of queues.values()) if (q.length) rotated.push(q.shift()!);
+        const started = new Set<string>();
         const days = Array.from({ length: 7 }, (_, i) => {
           const p = rotated[i % rotated.length];
-          return { day: i + 1, pickId: p.id, activity: activity(p, input.minutesPerDay, i + 1), minutes: input.minutesPerDay };
+          const first = !started.has(p.id);
+          started.add(p.id);
+          return { day: i + 1, pickId: p.id, activity: activity(p, input.minutesPerDay, first), minutes: input.minutesPerDay };
         });
         const vocab = (WORDS[input.picks[0].format] ?? WORDS.read).map(([term, ja, example]) => ({ term, ja, example }));
         return { days, vocab } as T;

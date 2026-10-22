@@ -160,7 +160,8 @@ export function planPrompt(input: PlanPromptInput): LlmJsonOptions {
       [
         "You write a 7-day English extensive reading/listening plan for a Japanese learner.",
         "`days`: exactly 7 items with `day` 1..7, a `pickId` from the picks, a concrete `activity` sized to the minutes per day",
-        "(e.g. \"Read the first 10 pages\", \"Listen to one episode\", \"Watch one episode with English subtitles\"), and `minutes`.",
+        "(e.g. \"Read the first 10 pages\", \"Listen to one episode\", \"Watch one episode with English audio and English subtitles\"), and `minutes`.",
+        "Films and shows from Japan should be watched with the English dub (English audio), not Japanese audio.",
         "Start day 1 with the first pick (it is the easiest), and alternate formats across days.",
         "`vocab`: exactly 12 words or phrases likely to appear in the day-1 pick, each with `ja` (a short Japanese gloss, in Japanese)",
         "and a short, simple English `example` sentence. Do not quote the work itself.",

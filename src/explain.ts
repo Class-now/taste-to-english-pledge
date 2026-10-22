@@ -65,7 +65,7 @@ export function explainPick(pick: QlooEntity, seeds: QlooEntity[], profile: Qloo
   const profileShared = [...new Set(profile.map((t) => pickTags.get(t.id) ?? pickTags.get(tagKey(t))).filter((t) => !!t).map((t) => tagKey(t!)))];
   if (profileShared.length > 0) return `Matches your taste for ${joinNames(profileShared.slice(0, 2))}`;
 
-  if (pick.affinity !== undefined) return `Strong taste match (${Math.round(pick.affinity * 100)}%)`;
+  if (pick.affinity !== undefined) return `Close to your overall taste (${Math.round(pick.affinity * 100)}% match)`;
   return "Recommended by Qloo for your taste";
 }
 
@@ -77,7 +77,7 @@ export function pickEvidence(pick: QlooEntity, seeds: QlooEntity[], profile: Qlo
   const seedById = new Map(seeds.map((s) => [s.id, s]));
   const contributions = [...contributors(pick.explainability, new Set(seedById.keys()))]
     .sort((a, b) => b[1] - a[1])
-    .map(([id, score]) => ({ seedId: id, name: seedById.get(id)!.name, ...(score > 0 ? { score: Math.min(1, score) } : {}) }));
+    .map(([id, score]) => ({ seedId: id, name: seedById.get(id)!.name, ...(score > 0 ? { score: Math.min(1, score > 1 ? score / 100 : score) } : {}) }));
   const pickTags = new Map<string, QlooTag>();
   for (const t of pick.tags) {
     pickTags.set(t.id, t);

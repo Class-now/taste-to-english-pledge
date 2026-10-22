@@ -31,6 +31,8 @@ export interface AgentDeps {
   now?: () => number;
   /** Receives trace events as they happen (streaming endpoint). Must not throw. */
   onEvent?: (e: AgentEvent) => void;
+  /** Aborted when nobody is listening any more (the streaming client went away): stop before the next step. */
+  signal?: AbortSignal;
 }
 
 export class AgentError extends Error {
@@ -86,8 +88,17 @@ function toEntityType(v: unknown): EntityType | undefined {
   return ENTITY_TYPES.includes(v as EntityType) ? (v as EntityType) : undefined;
 }
 
+const TYPE_NAME: Record<EntityType, string> = {
+  book: "book",
+  movie: "film",
+  tv_show: "TV show",
+  podcast: "podcast",
+  videogame: "video game",
+  artist: "artist",
+};
+
 function describe(e: QlooEntity): string {
-  return `${e.name} (${e.type.replace("_", " ")}${e.year ? `, ${e.year}` : ""})`;
+  return `${e.name} (${TYPE_NAME[e.type]}${e.year ? `, ${e.year}` : ""})`;
 }
 
 function isEnglishOrUnknown(e: QlooEntity): boolean {
@@ -113,7 +124,9 @@ function avoidRegexes(phrases: string[]): RegExp[] {
 /** Model-written text is shown to learners; links in it could only come from injected input, so drop them. */
 export function stripUrls(s: string): string {
   return s
-    .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "")
+    .replace(/\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.|javascript:|data:)\S*/gi, "")
+    // Bare domains ("evil.com/login"); a dot inside normal prose ("3.5 pages", "Mr. Fox") has no TLD after it.
+    .replace(/\b[\w-]+(?:\.[\w-]+)*\.(?:com|net|org|io|co|app|dev|xyz|info|biz|me|ly|gg|tv|jp|uk|us|ru|cn|top|site|online|link|click)\b\S*/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -203,7 +216,9 @@ function traceLlm(inner: Llm, onCall: (c: ToolCall) => void, now: () => number):
         });
         return out;
       } catch (err) {
-        onCall({ tool: "llm", endpoint: `Workers AI · ${kind}`, summary, ms: Math.round(now() - start), cached: false, ok: false, source: "workers-ai" });
+        const source = inner.lastSource ?? "workers-ai";
+        const endpoint = source === "workers-ai" ? `Workers AI · ${kind}` : `Rule-based fallback · ${kind}`;
+        onCall({ tool: "llm", endpoint, summary, ms: Math.round(now() - start), cached: false, ok: false, source });
         throw err;
       }
     },
@@ -213,7 +228,7 @@ function traceLlm(inner: Llm, onCall: (c: ToolCall) => void, now: () => number):
 function fallbackActivity(p: Pick, minutes: number): string {
   if (p.format === "read") return `Read about ${Math.max(2, Math.round(minutes / 3))} pages of "${p.name}"`;
   if (p.format === "listen") return `Listen to one episode of "${p.name}"`;
-  return `Watch part of "${p.name}" with English subtitles`;
+  return `Watch part of "${p.name}" with English audio and English subtitles`;
 }
 
 export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanResult> {
@@ -243,6 +258,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
   async function step<T>(id: string, fn: () => Promise<{ value: T; detail: string }>): Promise<T> {
     const start = now();
     const label = STEP_LABELS[id] ?? id;
+    if (deps.signal?.aborted) throw new AgentError(id, "The request was cancelled.", trace);
     currentStep = id;
     calls = [];
     emit({ type: "step-start", id, label });
@@ -267,7 +283,10 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
   // 1. normalize
   const normalized = await step("normalize", async () => {
     const items = input.favorites.map((f, index) => ({ index, title: f.title, ...(f.type ? { type: f.type } : {}) }));
-    const out = await llm.json<{ items?: unknown }>(normalizePrompt(items));
+    const out = await llm.json<{ items?: unknown }>({
+      ...normalizePrompt(items),
+      accept: (o) => asArray(record(o).items).some((r) => isString(record(r).query)),
+    });
     // Match rows by the echoed index so a skipped or reordered row can't shift later favourites.
     const rows = new Map<number, Record<string, unknown>>();
     for (const raw of asArray(record(out).items)) {
@@ -281,14 +300,14 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       const row = rows.get(oneBased ? i + 1 : i) ?? {};
       return {
         title: f.title,
-        query: isString(row.query) ? row.query.trim() : f.title,
+        query: isString(row.query) && stripUrls(row.query.trim()) ? clip(stripUrls(row.query.trim()), 80) : f.title,
         type: f.type ?? toEntityType(row.typeGuess),
         typeGiven: !!f.type,
       };
     });
     return {
       value,
-      detail: value.map((v) => `"${v.title}" → "${v.query}"${v.type ? ` (${v.type.replace("_", " ")})` : ""}`).join("; "),
+      detail: value.map((v) => `"${v.title}" → "${v.query}"${v.type ? ` (${TYPE_NAME[v.type]})` : ""}`).join("; "),
     };
   });
 
@@ -358,8 +377,8 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
     // Refining is optional: if it fails, keep going with the unrefined plan instead of losing it.
     await step("refine", async () => {
       const out = record(await llm.json<unknown>(refinePrompt(refineText)));
-      const add = asArray(out.addTags).filter(isString).map((t) => t.trim()).slice(0, 3);
-      avoidTags = asArray(out.avoidTags).filter(isString).map((t) => t.trim().toLowerCase()).slice(0, 3);
+      const add = asArray(out.addTags).filter(isString).map((t) => clip(stripUrls(t.trim()), 40)).filter(Boolean).slice(0, 3);
+      avoidTags = asArray(out.avoidTags).filter(isString).map((t) => clip(stripUrls(t.trim().toLowerCase()), 40)).filter(Boolean).slice(0, 3);
       const year = (v: unknown) => (Number.isInteger(v) && (v as number) >= 1800 && (v as number) <= 2100 ? (v as number) : undefined);
       minYear = year(out.minYear);
       maxYear = year(out.maxYear);
@@ -377,7 +396,8 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       ];
       if (minYear || maxYear) parts.push(`years: ${minYear ?? "any"}–${maxYear ?? "any"}`);
       return { value: undefined, detail: parts.join("; ") };
-    }).catch(() => {
+    }).catch((err) => {
+      if (deps.signal?.aborted) throw err;
       tagIds = [];
       avoidTags = [];
       minYear = maxYear = undefined;
@@ -415,7 +435,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       const failed: string[] = [];
       settled.forEach((s, i) => {
         if (s.status === "rejected") {
-          failed.push(`Qloo couldn't search ${types[i].replace("_", " ")}s this time`);
+          failed.push(`Qloo couldn't search ${TYPE_PLURAL[types[i]]} this time`);
           return;
         }
         const kept = s.value.filter(
@@ -426,7 +446,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
         );
         for (const e of kept) seen.add(e.id);
         value.push(...kept);
-        counts.push(`${kept.length} ${types[i].replace("_", " ")}${kept.length === 1 ? "" : "s"}`);
+        counts.push(`${kept.length} ${kept.length === 1 ? TYPE_NAME[types[i]] : TYPE_PLURAL[types[i]]}`);
       });
       return { value, counts, failed };
     };
@@ -485,7 +505,12 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
     const rate = async (batch: LevelCandidate[]) => {
       for (let i = 0; i < batch.length; i += LEVEL_BATCH) {
         try {
-          collect(await llm.json<unknown>(levelPrompt(input.level, batch.slice(i, i + LEVEL_BATCH))));
+          const slice = batch.slice(i, i + LEVEL_BATCH);
+          const sliceIds = new Set(slice.map((c) => c.id));
+          // An answer that rates none of the works asked about is as bad as no answer: let the fallback take it.
+          const accept = (out: unknown) =>
+            asArray(record(out).items).some((raw) => sliceIds.has(record(raw).id as string) && CEFR_LEVELS.includes(record(raw).cefr as Cefr));
+          collect(await llm.json<unknown>({ ...levelPrompt(input.level, slice), accept }));
         } catch (err) {
           lastError = err;
           console.error("level batch failed:", err instanceof Error ? err.message : String(err));
@@ -607,15 +632,16 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
     const viaTags = picks.filter((p) => !p.evidence?.contributions.length && (p.evidence?.sharedTags.length ?? 0) > 0).length;
     const parts = [`${viaExplain} named a favourite in Qloo explainability`];
     if (viaTags) parts.push(`${viaTags} share taste tags with your favourites`);
-    if (picks.length - viaExplain - viaTags) parts.push(`${picks.length - viaExplain - viaTags} rely on the affinity score`);
+    if (picks.length - viaExplain - viaTags) parts.push(`${picks.length - viaExplain - viaTags} ${picks.length - viaExplain - viaTags === 1 ? "relies" : "rely"} on the affinity score`);
     return { value: undefined, detail: `${picks.length} picks: ${parts.join(", ")}. Every "because" line comes from Qloo data, not the AI` };
   });
 
   // 7. plan + vocab
   const { plan, vocab } = await step("plan", async () => {
     const out = record(
-      await llm.json<unknown>(
-        planPrompt({
+      await llm.json<unknown>({
+        accept: (o) => asArray(record(o).days).length > 0 && asArray(record(o).vocab).length > 0,
+        ...planPrompt({
           learnerLevel: input.level,
           minutesPerDay: input.minutesPerDay,
           picks: picks.map((p) => ({
@@ -628,7 +654,7 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
             ...(p.description ? { description: clip(p.description, 200) } : {}),
           })),
         }),
-      ),
+      }),
     );
     const pickIds = new Set(picks.map((p) => p.id));
     const byDay = new Map<number, Day>();

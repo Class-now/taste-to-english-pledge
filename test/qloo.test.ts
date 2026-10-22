@@ -299,3 +299,15 @@ describe("createQlooClient / qlooMode", () => {
     expect(createQlooClient({ QLOO_BASE_URL: BASE, QLOO_API_KEY: "k" })).toBeInstanceOf(HttpQlooClient);
   });
 });
+
+describe("HttpQlooClient redirects", () => {
+  it("does not follow redirects, so the key header never goes to another host", async () => {
+    const inits: RequestInit[] = [];
+    const c = new HttpQlooClient("https://hackathon.api.qloo.com", "test-key", async (_u, init) => {
+      inits.push(init ?? {});
+      return new Response(null, { status: 302, headers: { location: "https://elsewhere.example/" } });
+    }, { retryDelayMs: 0 });
+    await expect(c.search("x")).rejects.toMatchObject({ status: 302 });
+    expect(inits[0].redirect).toBe("manual");
+  });
+});

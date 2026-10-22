@@ -13,7 +13,7 @@ Cloudflare Worker (TypeScript) + static frontend in `public/`. Product and pipel
 - Pipeline: `runPlan` in `src/agent.ts`. Step ids, labels and user-facing failure messages live in `STEP_LABELS` / `FAILURE_MESSAGES`. Only a `StepFailure` message reaches the user; other errors go to `console.error` and the client gets the fixed message.
 - The LLM never proposes titles. `because` lines come from Qloo data only (`src/explain.ts`).
 - Prompts and their JSON schemas are in `src/prompts.ts`. Each system prompt starts with a `[kind:<name>]` tag that `test/fake-llm.ts` uses to pick a canned answer. Workers AI may return short arrays, so schemas pin `minItems`/`maxItems` and the agent re-checks counts.
-- Cache namespace is `v1-<mode>` (`src/index.ts`). Bump `v1` when the parsed `QlooEntity` shape changes.
+- Cache namespace is `v2-<mode>` (`src/index.ts`). Bump it when the parsed `QlooEntity` shape or the sample data in `src/mock-data.ts` changes.
 - Frontend: vanilla ES module, no build step, no external scripts (Google Fonts only), never `innerHTML` with server data.
 - No new runtime dependencies. Don't change `wrangler.jsonc` bindings.
 

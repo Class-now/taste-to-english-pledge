@@ -3,7 +3,7 @@ import worker, { type Env } from "../src/index";
 import type { LlmJsonOptions } from "../src/llm";
 import { FakeLlm } from "./fake-llm";
 import { resetMemoryCache } from "../src/cache";
-import { resetRateLimits } from "../src/ratelimit";
+import { PLANS_PER_HOUR, resetRateLimits } from "../src/ratelimit";
 import { installMemoryCaches, type MemoryCache } from "./memory-cache";
 
 /** Fake Workers AI binding: routes each `run` through FakeLlm so WorkersAiLlm is exercised for real. */
@@ -90,7 +90,7 @@ describe("worker routes", () => {
     expect(res.status).toBe(200);
     const keys = [...cache.store.keys()].filter((k) => k.startsWith("https://qloo-cache.local/"));
     expect(keys.length).toBeGreaterThan(0);
-    expect(keys.some((k) => k.includes("/v1-mock/search"))).toBe(true);
+    expect(keys.some((k) => k.includes("/v2-mock/search"))).toBe(true);
   });
 
   it("returns 400 for invalid JSON", async () => {
@@ -105,9 +105,9 @@ describe("worker routes", () => {
     expect(typeof ((await res.json()) as { error: string }).error).toBe("string");
   });
 
-  it("returns 429 on the 21st plan in an hour from one IP", async () => {
+  it("returns 429 once an IP has used its hourly plans", async () => {
     const env = makeEnv();
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < PLANS_PER_HOUR; i++) {
       const res = await worker.fetch(plan(validBody, "198.51.100.1"), env, ctx);
       expect(res.status).toBe(200);
     }

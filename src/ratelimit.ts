@@ -1,6 +1,7 @@
 import { defaultCache } from "./cache";
 
-export const PLANS_PER_HOUR = 20;
+// Generous enough for a judge who refines and retries a few times; shared venue IPs count together.
+export const PLANS_PER_HOUR = 30;
 const HOUR_MS = 60 * 60 * 1000;
 const MEMORY_MAX_KEYS = 10_000;
 const isolateCounts = new Map<string, number>();
@@ -23,7 +24,7 @@ export async function checkRateLimit(
   const cache = "cache" in opts ? opts.cache : defaultCache();
   const memory = opts.memory ?? isolateCounts;
   const hour = Math.floor((opts.now ?? Date.now()) / HOUR_MS);
-  const key = `https://ratelimit.local/${encodeURIComponent(ip || "unknown")}/${hour}`;
+  const key = `https://ratelimit.local/${encodeURIComponent(clientKey(ip))}/${hour}`;
   let count = memory.get(key) ?? 0;
   if (cache) {
     try {
@@ -45,6 +46,17 @@ export async function checkRateLimit(
     }
   }
   return { allowed: true, count, limit };
+}
+
+/** IPv4 as is; IPv6 by its /64 prefix, since one host can rotate through a whole /64. */
+export function clientKey(ip: string): string {
+  const v = (ip || "unknown").trim().toLowerCase();
+  if (!v.includes(":")) return v;
+  const [head, tail = ""] = v.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = v.includes("::") ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right] : left;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
 }
 
 /** Clears this isolate's in-memory counts (tests). */

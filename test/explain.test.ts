@@ -36,7 +36,7 @@ describe("explainPick", () => {
 
   it("falls back to the affinity score, then a generic line", () => {
     const pick: QlooEntity = { id: "p", name: "P", type: "podcast", tags: [], affinity: 0.874 };
-    expect(explainPick(pick, [seedA])).toBe("Strong taste match (87%)");
+    expect(explainPick(pick, [seedA])).toBe("Close to your overall taste (87% match)");
     expect(explainPick({ ...pick, affinity: undefined }, [seedA])).toBe("Recommended by Qloo for your taste");
   });
   it("reads seed ids used as explainability keys and picks the top score", () => {

@@ -30,6 +30,8 @@
   </header>
 
   <main id="main" class="wrap">
+    <p id="demo-banner" class="demo-banner" role="status" hidden></p>
+
     <form id="plan-form" class="card form-card" novalidate>
       <fieldset class="field-group">
         <legend>What do you love?</legend>
@@ -78,19 +80,30 @@
       <button type="submit" id="submit-btn" class="primary-btn">Build my plan</button>
     </form>
 
-    <section id="agent-panel" class="card agent-panel" aria-live="polite" hidden>
+    <section id="agent-panel" class="card agent-panel" aria-labelledby="agent-title" hidden>
       <div class="agent-head">
-        <h2 id="agent-title">Agent at work</h2>
-        <button type="button" id="trace-toggle" class="link-btn" aria-expanded="true" aria-controls="agent-steps" hidden>Hide steps</button>
+        <div>
+          <h2 id="agent-title">Agent at work</h2>
+          <p id="agent-summary" class="agent-summary" hidden></p>
+        </div>
+        <div class="agent-actions">
+          <span id="agent-elapsed" class="agent-elapsed" hidden></span>
+          <button type="button" id="cancel-btn" class="ghost-btn small" hidden>Cancel</button>
+          <button type="button" id="trace-toggle" class="link-btn" aria-expanded="true" aria-controls="agent-steps" hidden>Hide steps</button>
+        </div>
       </div>
+      <p id="agent-status" class="agent-status" aria-live="polite"></p>
       <ol id="agent-steps" class="agent-steps"></ol>
     </section>
 
-    <section id="error-box" class="card error-box" role="alert" hidden>
-      <h2>We couldn't build your plan</h2>
+    <section id="error-box" class="card error-box" role="alert" tabindex="-1" hidden>
+      <h2 id="error-title">We couldn't build your plan</h2>
       <p id="error-msg"></p>
       <p id="error-step" class="muted"></p>
-      <button type="button" id="retry-btn" class="primary-btn small">Try again</button>
+      <div class="error-actions">
+        <button type="button" id="retry-btn" class="primary-btn small">Try again</button>
+        <button type="button" id="demo-retry-btn" class="ghost-btn small" hidden>Try with sample data</button>
+      </div>
     </section>
 
     <div id="results" class="results" aria-live="polite" hidden>
@@ -100,6 +113,13 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
+
+      <section class="block" id="seeds-block">
+        <h2>What Qloo matched</h2>
+        <p class="muted">Your favourites as Qloo's taste graph knows them.</p>
+        <ul id="seeds" class="seeds"></ul>
+        <p id="cross-domain" class="cross-domain" hidden></p>
+      </section>
 
       <section class="block">
         <h2>Your taste profile</h2>
@@ -113,7 +133,11 @@
       </section>
 
       <section class="block" id="plan-block">
-        <h2>Your 7-day plan</h2>
+        <div class="block-head">
+          <h2>Your 7-day plan</h2>
+          <button type="button" id="copy-plan" class="ghost-btn small">Copy plan</button>
+        </div>
+        <p id="copy-status" class="copy-status" role="status"></p>
         <ol id="plan" class="timeline"></ol>
       </section>
 
@@ -147,7 +171,8 @@
         <h2>How it works</h2>
         <ul>
           <li>Qloo's taste graph finds cross-domain matches — a Japanese game can lead to an English podcast.</li>
-          <li>An AI agent estimates English difficulty and writes the plan.</li>
+          <li>An AI agent estimates English difficulty, checks its own picks (if a format comes up short, it asks Qloo again with your taste tags) and writes the plan.</li>
+          <li>Every step and tool call is shown live in the agent trace.</li>
           <li>Nothing personal is stored or sent to Qloo — only titles of public works.</li>
         </ul>
       </section>
@@ -155,7 +180,8 @@
         <h2>Limits</h2>
         <ul>
           <li>Qloo results are aggregate taste patterns, not about you.</li>
-          <li>CEFR levels are estimates.</li>
+          <li>CEFR levels are estimates. If the AI is unavailable, simpler rule-based estimates are used and marked.</li>
+          <li>Demo mode uses a small hand-written sample set, not real Qloo data.</li>
         </ul>
       </section>
       <section>
@@ -163,6 +189,7 @@
         <ul class="plain">
           <li><a href="https://github.com/Class-now/qloo-reading-planner">Source on GitHub</a></li>
           <li><a href="https://github.com/Class-now/qloo-reading-planner/blob/main/LICENSE">MIT license</a></li>
+          <li>Built with Llama — Workers AI runs <a href="https://www.llama.com/llama3_3/license/">Meta Llama 3.3</a></li>
         </ul>
       </section>
     </div>

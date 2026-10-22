@@ -603,7 +603,12 @@ export async function runPlan(input: PlanInput, deps: AgentDeps): Promise<PlanRe
       p.because = explainPick(p, seeds, profile);
       p.evidence = pickEvidence(p, seeds, profile);
     }
-    return { value: undefined, detail: picks.map((p) => `${p.name}: ${p.because}`).join("; ") };
+    const viaExplain = picks.filter((p) => (p.evidence?.contributions.length ?? 0) > 0).length;
+    const viaTags = picks.filter((p) => !p.evidence?.contributions.length && (p.evidence?.sharedTags.length ?? 0) > 0).length;
+    const parts = [`${viaExplain} named a favourite in Qloo explainability`];
+    if (viaTags) parts.push(`${viaTags} share taste tags with your favourites`);
+    if (picks.length - viaExplain - viaTags) parts.push(`${picks.length - viaExplain - viaTags} rely on the affinity score`);
+    return { value: undefined, detail: `${picks.length} picks: ${parts.join(", ")}. Every "because" line comes from Qloo data, not the AI` };
   });
 
   // 7. plan + vocab

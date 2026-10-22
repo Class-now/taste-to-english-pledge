@@ -99,6 +99,31 @@ describe("worker routes", () => {
     expect(((await res.json()) as { error: string }).error).toMatch(/JSON/);
   });
 
+  it("returns 413 for a body over 8 KB, with or without content-length", async () => {
+    const big = JSON.stringify({ ...validBody, refine: "x".repeat(9000) });
+    const bytes = new TextEncoder().encode(big);
+    const withLength = new Request("https://example.com/api/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json", "content-length": String(bytes.length), "CF-Connecting-IP": "203.0.113.7" },
+      body: big,
+    });
+    expect((await worker.fetch(withLength, makeEnv(), ctx)).status).toBe(413);
+    const chunked = new Request("https://example.com/api/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json", "CF-Connecting-IP": "203.0.113.7" },
+      body: new ReadableStream<Uint8Array>({
+        start(c) {
+          for (let i = 0; i < bytes.length; i += 1024) c.enqueue(bytes.slice(i, i + 1024));
+          c.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+    expect(chunked.headers.get("content-length")).toBeNull();
+    const res = await worker.fetch(chunked, makeEnv(), ctx);
+    expect(res.status).toBe(413);
+  });
+
   it("returns 400 for an invalid body", async () => {
     const res = await worker.fetch(plan({ ...validBody, level: "Z9" }), makeEnv(), ctx);
     expect(res.status).toBe(400);

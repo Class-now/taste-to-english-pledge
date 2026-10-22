@@ -23,7 +23,7 @@ The app runs without a Qloo key: it uses the hand-written sample set and says so
 npx wrangler deploy
 ```
 
-Wrangler prints the URL, e.g. `https://taste-to-english.<your-subdomain>.workers.dev`. Then:
+On a Cloudflare account that has never used Workers, wrangler first asks you to pick a `*.workers.dev` subdomain (once per account). Wrangler prints the URL, e.g. `https://taste-to-english.<your-subdomain>.workers.dev`. Then:
 
 ```powershell
 curl.exe -s https://taste-to-english.<your-subdomain>.workers.dev/api/health
@@ -80,7 +80,7 @@ curl.exe -s https://taste-to-english.<your-subdomain>.workers.dev/api/health
 # {"ok":true,"mode":"live"}
 ```
 
-Secrets apply without a redeploy. Run the example on the deployed URL once more.
+`secret put` deploys a new version with the secret straight away; no separate `wrangler deploy` is needed. Run the example on the deployed URL once more.
 
 ### 3d. Post-key checklist
 
@@ -93,6 +93,7 @@ Secrets apply without a redeploy. Run the example on the deployed URL once more.
 
 ## 4. Submit on Devpost (by 10/31 12:45 JST)
 
+- **Make the repo public first** (it is private now, so the footer's "Source on GitHub" link and Devpost's open-source check fail until then): `gh repo edit Class-now/qloo-reading-planner --visibility public --accept-visibility-change-consequences`. History was scanned with gitleaks on 2026-10-22 (no leaks); re-run `gitleaks git .` if commits were added since.
 - Text: `docs/submission/devpost.md` (paste section by section; fill in the demo URL).
 - Video (optional on Devpost, recommended): script in `docs/submission/video-script.md`, under 3 minutes. Record with live data if the key works, otherwise with `?demo=1` and say it is sample data.
 - Screenshots: `docs/screenshots/` (sample data; retake with live data if possible).

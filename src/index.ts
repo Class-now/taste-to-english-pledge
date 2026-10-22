@@ -25,14 +25,40 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+/** Reads at most `max` bytes of the body; null when it is longer (a chunked body has no content-length). */
+async function readBodyLimited(request: Request, max: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    bytes.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 async function handlePlan(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   // The largest valid body is well under 2 KB; refuse big ones before parsing.
-  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
-    return json({ error: "Request body is too large." }, 413);
-  }
+  const tooLarge = () => json({ error: "Request body is too large." }, 413);
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return tooLarge();
+  const text = await readBodyLimited(request, MAX_BODY_BYTES);
+  if (text === null) return tooLarge();
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(text);
   } catch {
     return json({ error: "Request body must be valid JSON." }, 400);
   }

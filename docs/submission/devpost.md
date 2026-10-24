@@ -6,7 +6,7 @@ Paste each section into the matching Devpost field. Replace `<DEMO_URL>` and the
 
 **Tagline (≤ 200 chars):** Turn the anime, games and novels you love into an English reading, listening and watching plan at your level — an agent built on Qloo's cross-domain taste graph.
 
-**Links:** Demo `<DEMO_URL>` (add `?demo=1` for the sample-data demo) · Code https://github.com/Class-now/qloo-reading-planner (MIT)
+**Links:** Demo https://taste-to-english.shotaro-takakura.workers.dev (add `?demo=1` for the sample-data demo) · Code https://github.com/Class-now/qloo-reading-planner (MIT)
 
 **Built with:** qloo-api, cloudflare-workers, workers-ai, llama, typescript, javascript, html, css
 

@@ -2,7 +2,7 @@
 
 **Turn the Japanese anime, games and novels you love into an English reading, listening and watching plan at your level, built on Qloo's cross-domain taste graph.**
 
-Live demo: https://taste-to-english.shotaro-takakura.workers.dev (sample data until the Qloo hackathon key is connected; add `?demo=1` to force sample mode)
+Live demo: https://taste-to-english.shotaro-takakura.workers.dev (live Qloo data; add `?demo=1` to force the hand-written sample mode)
 
 Built for the Qloo Agentic Hackathon. No key handy? Open the demo with `?demo=1` to run it on a small hand-written sample set (clearly labelled).
 
@@ -242,7 +242,7 @@ Configuration (`wrangler.jsonc` plus secrets):
 - [`docs/qloo-integration-decision.md`](docs/qloo-integration-decision.md): why the Worker calls the Qloo API directly and how to switch to a gateway or the harness
 - [`docs/next-steps.md`](docs/next-steps.md): deploy, add the key, verify
 - [`docs/license-check.md`](docs/license-check.md): licenses of everything we ship or call
-- [`docs/screenshots/`](docs/screenshots/): screenshots (sample data, offline AI fallback)
+- [`docs/screenshots/`](docs/screenshots/): screenshots (01–06 live Qloo data and Workers AI; 07–11 sample data)
 
 ## License
 

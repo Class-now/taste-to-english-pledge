@@ -1,6 +1,6 @@
-# Screenshots (draft)
+# Screenshots
 
-Taken 2026-10-22 with headless Chromium against the **offline demo** (`npm run dev:offline`): the hand-written sample set instead of live Qloo data, and the rule-based fallback instead of Workers AI. That is why the badges say "sample data" / "rule-based fallback" and most picks are rated B1. Retake with live Qloo data and Workers AI on the deployed app before submitting (see `docs/next-steps.md`).
+`01`–`06` were retaken on 2026-10-24 with headless Chromium against the deployed app in **live mode** (Qloo hackathon key + Workers AI), using the built-in example (Spirited Away, Persona 5, Norwegian Wood). The rest were taken 2026-10-22 with headless Chromium against the **offline demo** (`npm run dev:offline`): the hand-written sample set instead of live Qloo data, and the rule-based fallback instead of Workers AI. That is why the badges say "sample data" / "rule-based fallback" and most picks are rated B1. They can be retaken the same way if needed.
 
 | File | Shows |
 |---|---|

@@ -64,12 +64,12 @@ describe("worker routes", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await res.json()).toEqual({ ok: true, mode: "mock" });
+    expect(await res.json()).toEqual({ ok: true, mode: "mock", paypal: "simulated", storage: "memory" });
   });
 
   it("GET /api/health reports live mode with a key", async () => {
     const res = await worker.fetch(new Request("https://example.com/api/health"), makeEnv({ QLOO_API_KEY: "k" }), ctx);
-    expect(await res.json()).toEqual({ ok: true, mode: "live" });
+    expect(await res.json()).toEqual({ ok: true, mode: "live", paypal: "simulated", storage: "memory" });
   });
 
   it("POST /api/plan returns a plan with picks", async () => {

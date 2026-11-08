@@ -11,7 +11,7 @@ describe("frontend static checks", () => {
 
   it("loads no external scripts", () => {
     const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
-    expect(scripts).toEqual(['<script type="module" src="/app.js">']);
+    expect(scripts).toEqual([`<script type="module" src="/app.js">`, `<script type="module" src="/pledge.js">`]);
     expect(js).not.toMatch(/\bimport\s.*from\s+["']https?:/);
   });
 

@@ -7,6 +7,24 @@ import { createQlooClient, qlooMode } from "./qloo";
 import { checkRateLimit } from "./ratelimit";
 import type { AgentEvent, PlanInput } from "./types";
 import { parsePlanInput } from "./validate";
+import { HttpPayPalClient, SANDBOX_BASE, SimulatedPayPalClient } from "./paypal";
+import {
+  KvPledgeStore,
+  MemoryPledgeStore,
+  PledgeError,
+  cancelApproval,
+  completeApproval,
+  createPledge,
+  getPledge,
+  parseCreateInput,
+  settle,
+  skipDay,
+  startQuiz,
+  submitAnswers,
+  view,
+  type PledgeDeps,
+} from "./pledge";
+import { PledgeRulesLlm } from "./pledge-ai";
 
 export interface Env {
   /** Workers AI. When missing (or failing) the rule-based fallback answers instead. */
@@ -14,6 +32,88 @@ export interface Env {
   ASSETS: Fetcher;
   QLOO_BASE_URL: string;
   QLOO_API_KEY?: string;
+  /** Pledge records. Without it (tests, offline dev) pledges live in memory. */
+  PLEDGES?: KVNamespace;
+  /** PayPal sandbox REST app. Without both, pledges use a clearly labelled simulated client. */
+  PAYPAL_CLIENT_ID?: string;
+  PAYPAL_CLIENT_SECRET?: string;
+  PAYPAL_BASE_URL?: string;
+}
+
+const memoryPledges = new MemoryPledgeStore();
+
+function makePledgeDeps(env: Env): PledgeDeps {
+  const paypal =
+    env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET
+      ? new HttpPayPalClient(env.PAYPAL_CLIENT_ID, env.PAYPAL_CLIENT_SECRET, env.PAYPAL_BASE_URL || SANDBOX_BASE)
+      : new SimulatedPayPalClient();
+  const rules = new PledgeRulesLlm();
+  return {
+    store: env.PLEDGES ? new KvPledgeStore(env.PLEDGES) : memoryPledges,
+    paypal,
+    llm: env.AI ? new ResilientLlm(new WorkersAiLlm(env.AI), rules) : rules,
+  };
+}
+
+function redirect(location: string): Response {
+  return new Response(null, { status: 303, headers: { location, "cache-control": "no-store" } });
+}
+
+async function readJson(request: Request): Promise<unknown> {
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) throw new PledgeError("Request body is too large.", 413);
+  const text = await readBodyLimited(request, MAX_BODY_BYTES);
+  if (text === null) throw new PledgeError("Request body is too large.", 413);
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new PledgeError("Request body must be valid JSON.");
+  }
+}
+
+async function handlePledge(request: Request, env: Env, url: URL): Promise<Response> {
+  const deps = makePledgeDeps(env);
+  const parts = url.pathname.split("/").filter(Boolean); // ["api","pledges",id?,...]
+  const [, , id, action, n, sub] = parts;
+  const method = request.method;
+  try {
+    if (!id) {
+      if (method !== "POST") return json({ error: "Use POST to create a pledge." }, 405);
+      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+      const limit = await checkRateLimit(`pledge:${ip}`);
+      if (!limit.allowed) return json({ error: "Too many pledges this hour, try again later." }, 429);
+      const p = await createPledge(parseCreateInput(await readJson(request)), url.origin, deps);
+      return json(view(p), p.status === "error" ? 502 : 201);
+    }
+    if (!action && method === "GET") return json(view(await getPledge(id, deps)));
+    if (action === "return" && method === "GET") {
+      try {
+        await completeApproval(id, url.searchParams.get("token"), deps);
+        return redirect(`/?pledge=${encodeURIComponent(id)}`);
+      } catch (err) {
+        if (err instanceof PledgeError && err.status === 404) throw err;
+        return redirect(`/?pledge=${encodeURIComponent(id)}&error=approve`);
+      }
+    }
+    if (action === "cancel" && method === "GET") {
+      await cancelApproval(id, deps);
+      return redirect(`/?pledge=${encodeURIComponent(id)}`);
+    }
+    if (action === "settle" && method === "POST") return json(view(await settle(id, deps)));
+    if (action === "days" && n && method === "POST") {
+      const day = Number(n);
+      if (sub === "quiz") return json(view(await startQuiz(id, day, deps)));
+      if (sub === "skip") return json(view(await skipDay(id, day, deps)));
+      if (sub === "answers") {
+        const body = (await readJson(request)) as { answers?: unknown };
+        return json(view(await submitAnswers(id, day, body.answers, deps)));
+      }
+    }
+    return json({ error: "Not found" }, 404);
+  } catch (err) {
+    if (err instanceof PledgeError) return json({ error: err.message }, err.status);
+    console.error("pledge failed:", err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+    return json({ error: "Something went wrong" }, 500);
+  }
 }
 
 const MAX_BODY_BYTES = 8 * 1024;
@@ -132,9 +232,14 @@ function streamPlan(input: PlanInput, deps: AgentDeps, ctx: ExecutionContext): R
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    const { pathname } = url;
     if (pathname === "/api/health" && request.method === "GET") {
-      return json({ ok: true, mode: qlooMode(env) });
+      const paypal = env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET ? "sandbox" : "simulated";
+      return json({ ok: true, mode: qlooMode(env), paypal, storage: env.PLEDGES ? "kv" : "memory" });
+    }
+    if (pathname === "/api/pledges" || pathname.startsWith("/api/pledges/")) {
+      return handlePledge(request, env, url);
     }
     if (pathname === "/api/plan") {
       if (request.method !== "POST") return json({ error: "Use POST for /api/plan." }, 405);

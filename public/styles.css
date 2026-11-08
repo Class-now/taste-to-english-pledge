@@ -341,3 +341,57 @@ input[type="text"]:focus-visible, select:focus-visible { outline-offset: 0; bord
 }
 
 .refine-note { margin: 4px 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-strong); font-size: 0.9rem; }
+
+/* ---------- Pledge ---------- */
+.pledge-offer { border: 2px solid var(--accent); }
+.pledge-options { display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; }
+.pledge-options label { cursor: pointer; }
+.pledge-options input { position: absolute; opacity: 0; }
+.pledge-options span { display: flex; flex-direction: column; padding: 10px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+.pledge-options input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+.pledge-options input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.paypal-btn { background: #ffc439; color: #111; text-decoration: none; display: inline-block; }
+.paypal-btn:hover { background: #f2ba36; }
+.pledge-view { display: grid; gap: 16px; margin: 16px 0 32px; }
+.pledge-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; }
+.pledge-head h2 { margin: 0 0 4px; }
+.pledge-status { margin: 0; color: var(--ink-2); }
+.pledge-money { display: flex; gap: 20px; }
+.pledge-money div { display: flex; flex-direction: column; }
+.pledge-money small { color: var(--muted); }
+.pledge-money strong { font-size: 1.4rem; }
+.pledge-days { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.pday { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); font-size: .9rem; }
+.pday-num { font-weight: 700; }
+.pday-title { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pday-badge { font-size: .8rem; font-weight: 600; }
+.pday-open { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.pday-passed { background: var(--accent-soft); }
+.pday-passed .pday-badge { color: var(--accent-strong); }
+.pday-failed, .pday-missed { background: var(--amber-bg); }
+.pday-failed .pday-badge, .pday-missed .pday-badge { color: var(--amber-ink); }
+.pday-locked { opacity: .6; }
+.checkin h3 { margin: 0 0 4px; }
+.checkin-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.quiz { display: grid; gap: 8px; margin-top: 12px; }
+.quiz-q { font-weight: 600; }
+.quiz textarea { width: 100%; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.grade { padding: 12px; border-radius: var(--radius); margin: 8px 0; }
+.grade p { margin: 4px 0; }
+.grade-ok { background: var(--accent-soft); }
+.grade-no { background: var(--amber-bg); color: var(--amber-ink); }
+.corrections { margin: 4px 0; padding-left: 20px; }
+.corrections s { opacity: .7; }
+.settle-result { border: 2px solid var(--accent); }
+.settle-result h3 { margin-top: 0; }
+.ledger { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.entry { border-left: 3px solid var(--line); padding-left: 10px; }
+.entry p { margin: 2px 0; }
+.entry-actor { font-weight: 700; margin-right: 8px; }
+.entry time { color: var(--muted); font-size: .85rem; }
+.actor-paypal { border-color: #ffc439; }
+.actor-agent, .actor-tutor { border-color: var(--accent); }
+.actor-guardrail { border-color: var(--stretch); }
+.calls { margin: 4px 0 0; padding-left: 18px; font-size: .85rem; color: var(--ink-2); }
+.pledge-busy { cursor: progress; }
+.pledge-busy button { pointer-events: none; opacity: .6; }

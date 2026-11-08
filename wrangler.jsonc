@@ -1,13 +1,16 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "taste-to-english",
+  "name": "taste-to-english-pledge",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
   "ai": { "binding": "AI" },
+  "kv_namespaces": [{ "binding": "PLEDGES", "id": "61616bc1636b41d9a33cc050e403b976" }],
   "vars": { "QLOO_BASE_URL": "https://hackathon.api.qloo.com" }
-  // QLOO_API_KEY is a secret, never a var:
-  //   npx wrangler secret put QLOO_API_KEY
-  // Without it the app runs in mock mode (clearly labelled in the UI).
+  // PayPal sandbox credentials are secrets, never vars:
+  //   npx wrangler secret put PAYPAL_CLIENT_ID
+  //   npx wrangler secret put PAYPAL_CLIENT_SECRET
+  // Without them pledges use a clearly labelled simulated PayPal client.
+  // No QLOO_API_KEY: the planner runs on the built-in sample catalog.
 }

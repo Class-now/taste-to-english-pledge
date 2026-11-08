@@ -754,6 +754,7 @@ function renderResults(data) {
 
   els.results.hidden = false;
   els.resultsStatus.textContent = `Plan ready: ${picks.length} picks and a 7-day plan.`;
+  window.dispatchEvent(new CustomEvent("plan:ready", { detail: { result: data, level: lastRequest?.level || "B1" } }));
 }
 
 function renderSeeds(seeds, picks) {

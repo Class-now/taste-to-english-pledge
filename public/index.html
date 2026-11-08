@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/pledge.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -25,7 +26,7 @@
       <span id="mode-badge" class="mode-badge" hidden></span>
     </div>
     <div class="wrap">
-      <h1 class="pitch">Tell us 3 things you love. We'll find English books, podcasts and shows that match your taste — at your level.</h1>
+      <h1 class="pitch">Tell us 3 things you love. We'll plan a week of English books, podcasts and shows at your level — then back it with a PayPal pledge you only lose if you skip.</h1>
     </div>
   </header>
 
@@ -106,6 +107,39 @@
       </div>
     </section>
 
+    <section id="pledge-view" class="pledge-view" aria-labelledby="pledge-title" hidden>
+      <div class="card pledge-head">
+        <div>
+          <h2 id="pledge-title">Your 7-day pledge</h2>
+          <p id="pledge-status" class="pledge-status" aria-live="polite"></p>
+        </div>
+        <div class="pledge-money">
+          <div><small>On hold</small><strong id="pledge-held">$0.00</strong></div>
+          <div><small>Safe so far</small><strong id="pledge-safe">$0.00</strong></div>
+          <div><small>To charity</small><strong id="pledge-owed">$0.00</strong></div>
+        </div>
+      </div>
+      <p id="pledge-error" class="form-error" role="alert" hidden></p>
+      <div id="pledge-approve" class="card" hidden>
+        <p>Approve the hold in PayPal to start day 1.</p>
+        <a id="pledge-approve-link" class="primary-btn paypal-btn" href="#">Approve with PayPal</a>
+      </div>
+      <ol id="pledge-days" class="pledge-days"></ol>
+      <div id="pledge-checkin" class="card checkin" hidden></div>
+      <div id="pledge-settle" class="card settle" hidden>
+        <h3>Week finished</h3>
+        <p class="muted">The settlement agent reads your record, proposes a PayPal action, a guardrail checks it against the ledger, and only then is PayPal called.</p>
+        <button type="button" id="pledge-settle-btn" class="primary-btn">Settle my pledge</button>
+      </div>
+      <div id="pledge-result" class="card settle-result" hidden></div>
+      <section class="card ledger-card">
+        <h3>Agent &amp; PayPal ledger</h3>
+        <p class="muted">Every decision and every PayPal REST call, in order.</p>
+        <ol id="pledge-ledger" class="ledger"></ol>
+      </section>
+      <p><a href="/" class="link-btn">Build a new plan</a></p>
+    </section>
+
     <p id="results-status" class="sr-only" aria-live="polite"></p>
 
     <div id="results" class="results" hidden>
@@ -144,6 +178,21 @@
         <ol id="plan" class="timeline"></ol>
       </section>
 
+      <section class="block card pledge-offer" id="pledge-offer" aria-labelledby="pledge-offer-title">
+        <h2 id="pledge-offer-title">Back this plan with a pledge</h2>
+        <p class="muted">Most learners quit in the first week. Put a small amount on hold with PayPal: every day you finish, an AI tutor checks your answers and that day's money stays yours. Skip a day and its share is donated. If you finish all 7 days, the hold is voided and <strong>nothing is charged</strong>.</p>
+        <div class="pledge-options" role="radiogroup" aria-label="Amount per day">
+          <label><input type="radio" name="per-day" value="1" checked><span><strong>$1 / day</strong><small>$7 hold</small></span></label>
+          <label><input type="radio" name="per-day" value="2"><span><strong>$2 / day</strong><small>$14 hold</small></span></label>
+        </div>
+        <p id="pledge-offer-error" class="form-error" role="alert" hidden></p>
+        <div class="checkin-actions">
+          <button type="button" id="pledge-start" class="primary-btn paypal-btn">Hold $7 with PayPal</button>
+          <button type="button" id="pledge-card" class="ghost-btn">Judges' shortcut: hold with the sandbox test card</button>
+        </div>
+        <p class="hint">PayPal sandbox — no real money moves. Hackathon build: the next day unlocks as soon as you finish one, so you can test the whole week in minutes.</p>
+      </section>
+
       <section class="block" id="vocab-block">
         <h2>Starter vocabulary</h2>
         <p class="muted" id="vocab-note">AI-generated — double-check in a dictionary.</p>
@@ -176,7 +225,8 @@
           <li>Qloo's taste graph finds cross-domain matches — a Japanese game can lead to an English podcast.</li>
           <li>An AI agent estimates English difficulty, checks its own picks (if a format comes up short, it asks Qloo again with your taste tags) and writes the plan.</li>
           <li>Every step and tool call is shown live in the agent trace.</li>
-          <li>Only the titles you type are sent to Qloo and the AI, so please don't enter personal details. Nothing is stored except a 24-hour cache of Qloo results; there are no accounts.</li>
+          <li>The pledge is a PayPal authorization: money is held, not taken. An AI tutor checks each day; a settlement agent voids the hold or captures only missed days, after a guardrail checks it against the ledger.</li>
+          <li>Only the titles you type are sent to Qloo and the AI, so please don't enter personal details. Pledges (plan titles, your answers, PayPal ids) are stored for 45 days; there are no accounts.</li>
         </ul>
       </section>
       <section>
@@ -190,8 +240,9 @@
       <section>
         <h2>Project</h2>
         <ul class="plain">
-          <li><a href="https://github.com/Class-now/qloo-reading-planner">Source on GitHub</a></li>
-          <li><a href="https://github.com/Class-now/qloo-reading-planner/blob/main/LICENSE">MIT license</a></li>
+          <li><a href="https://github.com/Class-now/taste-to-english-pledge">Source on GitHub</a></li>
+          <li><a href="https://github.com/Class-now/taste-to-english-pledge/blob/main/LICENSE">MIT license</a></li>
+          <li>Payments: PayPal Orders v2 &amp; Payments v2 (sandbox)</li>
           <li>Built with Llama — Workers AI runs <a href="https://www.llama.com/llama3_3/license/">Meta Llama 3.3</a></li>
         </ul>
       </section>

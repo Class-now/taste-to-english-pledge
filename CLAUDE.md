@@ -1,23 +1,21 @@
-# qloo-reading-planner (Taste-to-English)
+# taste-to-english-pledge
 
-Cloudflare Worker (TypeScript) + static frontend in `public/`. Product and pipeline design: `docs/design.md`. Qloo API facts: `docs/qloo-api-notes.md`.
+PayPal AI Hackathon entry (deadline 2026-11-13 05:00 JST). Fork of `qloo-reading-planner` (Taste-to-English) with a PayPal-backed study pledge. Contest status lives in `C:\For Claude\contest-pm\contests\1113-paypal-ai\status.md`.
+
+## Where things are
+- Planner pipeline (unchanged from the Qloo build, runs on the sample catalog only — no Qloo key): `src/agent.ts`, `src/mock-*.ts`.
+- PayPal REST client (Orders v2 AUTHORIZE, authorize, void, partial capture, sandbox test-card shortcut): `src/paypal.ts`.
+- Pledge state machine, KV store, guardrail, settlement: `src/pledge.ts`. Routes: `/api/pledges*` in `src/index.ts`.
+- AI prompts (quiz, grade, settle) and their rule-based twins: `src/pledge-ai.ts`.
+- UI: `public/pledge.js` (+ sections in `public/index.html`, styles at the end of `public/styles.css`).
+- Tests: `test/pledge.test.ts`.
 
 ## Commands
-- `npx tsc --noEmit`
-- `npx vitest run`
-- `npx wrangler deploy --dry-run --outdir /tmp/ttE-dry`
-- Local dev: `npx wrangler dev --port 8799` (8787 is taken by another local service). Workers AI needs a Cloudflare login even in mock mode.
+- `npx tsc --noEmit` / `npx vitest run`
+- Local: `npx wrangler dev --port 8799` (sandbox creds in `.dev.vars`, gitignored).
+- Deploy: `npx wrangler deploy` (Claude deploys and reports). Secrets: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` via `wrangler secret put`.
 
 ## Conventions
-- Mock vs live: `createQlooClient` / `qlooMode` (`src/qloo.ts`) pick live mode only when `QLOO_API_KEY` is set. `src/mock-data.ts` is hand-written; never commit real Qloo response data or a key.
-- Pipeline: `runPlan` in `src/agent.ts`. Step ids, labels and user-facing failure messages live in `STEP_LABELS` / `FAILURE_MESSAGES`. Only a `StepFailure` message reaches the user; other errors go to `console.error` and the client gets the fixed message.
-- The LLM never proposes titles. `because` lines come from Qloo data only (`src/explain.ts`).
-- Prompts and their JSON schemas are in `src/prompts.ts`. Each system prompt starts with a `[kind:<name>]` tag that `test/fake-llm.ts` uses to pick a canned answer. Workers AI may return short arrays, so schemas pin `minItems`/`maxItems` and the agent re-checks counts.
-- Cache namespace is `v2-<mode>` (`src/index.ts`). Bump it when the parsed `QlooEntity` shape or the sample data in `src/mock-data.ts` changes.
-- Frontend: vanilla ES module, no build step, no external scripts (Google Fonts only), never `innerHTML` with server data.
-- No new runtime dependencies. Don't change `wrangler.jsonc` bindings.
-
-## Test helpers
-- `test/fake-llm.ts`: deterministic LLM with per-kind overrides.
-- `test/memory-cache.ts`: in-memory Cache API; `installMemoryCaches()` puts it on `globalThis.caches`.
-- `HttpQlooClient` takes an injected fetch and `{ retryDelayMs }` for tests.
+- Money moves only after `guardDecision` agrees with the ledger. Mutating PayPal calls carry a `PayPal-Request-Id` derived from the pledge id.
+- Frontend: vanilla ES module, no build step, never `innerHTML` with server data.
+- No runtime dependencies.

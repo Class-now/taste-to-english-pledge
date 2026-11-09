@@ -3,6 +3,8 @@
 **Finish your English week — or your money goes to charity.** An AI agent builds a 7-day English reading/listening plan from things you already love, then you back it with a **PayPal authorization hold**. Every day an AI tutor quizzes you on what you actually read or heard. At the end of the week a settlement agent decides what happens to the hold: **void it** (you kept every promise — nothing is charged) or **capture only the missed days' share** for a cause and release the rest.
 
 - Live demo: https://taste-to-english-pledge.shotaro-takakura.workers.dev
+- Demo video: https://www.youtube.com/watch?v=eyI7xb_2qMs
+- Devpost: https://devpost.com/software/taste-to-english-pledge
 - Built for the PayPal AI Hackathon (Devpost, Oct–Nov 2026). PayPal **sandbox** only — no real money moves.
 
 ## The problem
@@ -44,7 +46,7 @@ Taste-to-English was started on 2026-10-21 for the Qloo hackathon (planning pipe
 ## Try it (judges)
 
 1. Open the demo, click **Try an example** → **Build my plan**.
-2. Under the plan, choose $1/day → **Hold $7 with PayPal**, and approve with a PayPal **sandbox personal account** (create one in your own PayPal developer dashboard → Sandbox accounts).
+2. Under the plan, choose $1/day → **Hold $7 with PayPal**, and approve with a PayPal **sandbox personal account** (create one in your own PayPal developer dashboard → Sandbox accounts) — or click **Judges' shortcut: hold with the sandbox test card**, which places a real sandbox authorization without a buyer login.
 3. Back on the pledge page: **I did today's session — check me**, answer in English, submit. Skip a day or two to see a partial capture.
 4. After day 7: **Settle my pledge** and read the ledger.
 

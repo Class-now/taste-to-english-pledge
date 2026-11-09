@@ -79,6 +79,14 @@ function answersFor(title, qs) {
   });
 }
 
+async function submitAndWait() {
+  const done = page.waitForResponse((r) => /\/answers$/.test(r.url()) && r.request().method() === "POST", { timeout: 120_000 });
+  await page.locator("#pledge-checkin").getByRole("button", { name: "Submit answers" }).click();
+  await done;
+  await page.waitForFunction(() => !document.body.classList.contains("pledge-busy"));
+  await pause(300);
+}
+
 async function doDay(n, opts = {}) {
   const card = page.locator("#pledge-checkin");
   await card.waitFor();
@@ -87,11 +95,13 @@ async function doDay(n, opts = {}) {
     await pause(1500);
     await card.getByRole("button", { name: /Skip today/ }).click();
     await page.waitForSelector(`#pledge-days li:nth-child(${n}).pday-missed`);
+    await page.waitForFunction(() => !document.body.classList.contains("pledge-busy"));
     await pause(1200);
     return;
   }
   await card.getByRole("button", { name: /check me/ }).click();
-  await fast(() => card.locator("textarea").first().waitFor({ timeout: 90_000 }), 6);
+  await fast(() => page.locator("#pledge-checkin textarea").first().waitFor({ timeout: 90_000 }), 6);
+  await page.waitForFunction(() => !document.body.classList.contains("pledge-busy"));
   if (opts.show) {
     await caption("The AI tutor (Workers AI, Llama 3.3) writes questions only someone who did today's session can answer.");
     await scrollTo("#pledge-checkin");
@@ -105,16 +115,14 @@ async function doDay(n, opts = {}) {
     if (opts.show) await areas.nth(i).pressSequentially(answers[i], { delay: 4 });
     else await areas.nth(i).fill(answers[i]);
   }
-  await card.getByRole("button", { name: "Submit answers" }).click();
-  await fast(() => page.waitForFunction((k) => !document.querySelector(`#pledge-days li:nth-child(${k})`).classList.contains("pday-open") || document.querySelector(".grade-no"), n, { timeout: 90_000 }), 6);
+  await fast(() => submitAndWait(), 6);
   // A day that did not pass gets one retry with fuller answers.
   if (await page.locator(`#pledge-days li:nth-child(${n}).pday-open`).count()) {
     await caption("Not convincing enough — the tutor asks for a retry. One retry, then the day counts as missed.");
     await pause(2500);
     const again = page.locator("#pledge-checkin textarea");
     for (let i = 0; i < answers.length; i++) await again.nth(i).fill(`${answers[i]} I wrote this in my own words after the session.`);
-    await page.locator("#pledge-checkin").getByRole("button", { name: "Submit answers" }).click();
-    await fast(() => page.waitForFunction((k) => !document.querySelector(`#pledge-days li:nth-child(${k})`).classList.contains("pday-open"), n, { timeout: 90_000 }), 6);
+    await fast(() => submitAndWait(), 6);
   }
   if (opts.show) {
     await caption("Graded 0–100 with feedback and corrections. Pass → that day's $1 is safe.");
@@ -134,7 +142,9 @@ await fast(async () => {
   await doDay(7);
 }, 12);
 await scrollTo("#pledge-view");
-await caption("Week over: 6 days kept, 1 skipped.");
+const kept = await page.locator("#pledge-days li.pday-passed").count();
+const lost = 7 - kept;
+await caption(`Week over: ${kept} days kept, ${lost} skipped or failed.`);
 await pause(3000);
 await scrollTo("#pledge-settle");
 await caption("The settlement agent proposes a PayPal action; a guardrail checks it against the ledger before any money moves.");
@@ -142,7 +152,9 @@ await pause(3000);
 await page.click("#pledge-settle-btn");
 await fast(() => page.waitForSelector("#pledge-result:not([hidden])", { timeout: 120_000 }), 4);
 await scrollTo("#pledge-result");
-await caption("Partial capture: $1 captured for charity with final_capture=true; the other $6 is released.");
+const headline = (await page.locator("#pledge-result h3").textContent()).trim();
+const released = ((await page.locator("#pledge-result p.muted").last().textContent()).match(/Released (\$[\d.]+)/) || [])[1] || "";
+await caption(/voided/i.test(headline) ? "Hold voided: nothing charged." : `${headline} with final_capture=true; the remaining ${released} is released.`);
 await pause(5000);
 await scrollTo("#pledge-ledger");
 await caption("Full audit trail: learner, AI tutor, settlement agent, guardrail and every PayPal REST call.");
